@@ -6,7 +6,14 @@ import subprocess
 
 from _init_venv_and_requirements import init_venv_and_requirements
 from log import color, logger
-from util import human_readable_size, make_sure_dir_exists, show_head_line
+from util import (
+    async_message_box,
+    clear_file,
+    human_readable_size,
+    make_sure_dir_exists,
+    remove_file_or_directory,
+    show_head_line,
+)
 
 
 def build(disable_douban=False, enable_proxy=False, use_upx=True):
@@ -14,10 +21,17 @@ def build(disable_douban=False, enable_proxy=False, use_upx=True):
     venv_path = ".venv"
     pyinstaller_path = os.path.join(venv_path, "Scripts", "pyinstaller")
 
+    # 确保test.py内容为空，避免出现异常状况
+    if os.path.isfile("test.py") and os.stat("test.py").st_size != 0:
+        with open("test.py", encoding="utf-8") as f:
+            async_message_box(f"test.py内容不为空，未避免构建过程中执行产生副作用，将清空其内容，其内容如下:\n\n{f.read()}", "警告：test.py的测试代码未移除")
+
+        clear_file("test.py")
+
     # 初始化venv和依赖
     init_venv_and_requirements(".venv", "requirements.txt", disable_douban, enable_proxy)
 
-    show_head_line(f"将使用.venv环境进行编译", color("bold_yellow"))
+    show_head_line("将使用.venv环境进行编译", color("bold_yellow"))
 
     temp_remove_file_dir = os.path.join(".cached", "build_temp_remove_files")
     site_packages_path = os.path.join(venv_path, "Lib", "site-packages")
@@ -42,7 +56,7 @@ def build(disable_douban=False, enable_proxy=False, use_upx=True):
             "imageformats/qsvg.dll",
             "imageformats/qwebp.dll",
             "platforms/qwebgl.dll",
-        ]
+        ],
     }
     logger.info(color("bold_green") + f"开始编译前先尝试移动这些确定用不到的库文件到临时目录 {temp_remove_file_dir}，从而尽可能减少最终编译的大小")
     for parent_directory, file_or_directory_name_list in dep_files_to_remove_during_build.items():
@@ -53,6 +67,8 @@ def build(disable_douban=False, enable_proxy=False, use_upx=True):
             if not os.path.exists(path):
                 logger.warning(f"\t{path} 不存在，将跳过")
                 continue
+            if os.path.exists(backup_path):
+                remove_file_or_directory(backup_path)
 
             # 将文件移动到备份目录
             logger.info(f"\t开始移动 {path}")
@@ -63,7 +79,14 @@ def build(disable_douban=False, enable_proxy=False, use_upx=True):
     build_configs = [
         ("main.py", "DNF蚊子腿小助手.exe", "utils/icons/DNF蚊子腿小助手.ico", ".", ["PyQt5"], []),
         ("auto_updater.py", "auto_updater.exe", "", "utils", ["PyQt5"], []),
-        ("ark_lottery_special_version.py", "DNF蚊子腿小助手_集卡特别版.exe", "utils/icons/ark_lottery_special_version.ico", ".", ["PyQt5"], []),
+        (
+            "ark_lottery_special_version.py",
+            "DNF蚊子腿小助手_集卡特别版.exe",
+            "utils/icons/ark_lottery_special_version.ico",
+            ".",
+            ["PyQt5"],
+            [],
+        ),
         ("config_ui.py", "DNF蚊子腿小助手配置工具.exe", "utils/icons/config_ui.ico", ".", [], ["--noconsole"]),
     ]
 
@@ -75,22 +98,23 @@ def build(disable_douban=False, enable_proxy=False, use_upx=True):
 
         cmd_build = [
             pyinstaller_path,
-            '--name', exe_name,
-            '-F',
+            "--name",
+            exe_name,
+            "-F",
             src_path,
         ]
         if icon_path != "":
-            cmd_build.extend(['--icon', icon_path])
+            cmd_build.extend(["--icon", icon_path])
         for module in exclude_modules:
-            cmd_build.extend(['--exclude-module', module])
+            cmd_build.extend(["--exclude-module", module])
         if use_upx:
-            cmd_build.extend(['--upx-dir', "utils"])
+            cmd_build.extend(["--upx-dir", "utils"])
         cmd_build.extend(extra_args)
 
         logger.info(f"{prefix} 开始编译 {exe_name}，命令为：{' '.join(cmd_build)}")
         subprocess.call(cmd_build)
 
-        logger.info(f"编译结束，进行善后操作")
+        logger.info("编译结束，进行善后操作")
 
         # 复制二进制
         logger.info(f"复制{exe_name}到目标目录{target_dir}")
@@ -128,14 +152,14 @@ def build(disable_douban=False, enable_proxy=False, use_upx=True):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--disable_douban", action='store_true')
-    parser.add_argument("--enable_proxy", action='store_true')
-    parser.add_argument("--disable_upx", action='store_true')
+    parser.add_argument("--disable_douban", action="store_true")
+    parser.add_argument("--enable_proxy", action="store_true")
+    parser.add_argument("--disable_upx", action="store_true")
     args = parser.parse_args()
 
     return args
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
     build(args.disable_douban, args.enable_proxy, not args.disable_upx)

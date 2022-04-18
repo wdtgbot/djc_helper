@@ -1,6 +1,9 @@
 from datetime import timedelta
+from typing import Optional
 
-from util import *
+from db import FirstRunDB
+from log import logger
+from util import get_month, get_now, get_today, get_week, get_year, try_except
 
 
 class FirstRunType:
@@ -32,7 +35,9 @@ def is_first_run(key) -> bool:
     return _is_first_run(FirstRunType.ONCE, key)
 
 
-def is_first_run_in(key="", duration=timedelta(days=1)) -> bool:
+def is_first_run_in(key="", duration: Optional[timedelta] = None) -> bool:
+    duration = duration or timedelta(days=1)
+
     return _is_first_run(FirstRunType.DURATION, key, duration=duration)
 
 
@@ -53,7 +58,9 @@ def is_yearly_first_run(key="") -> bool:
 
 
 @try_except(return_val_on_except=True)
-def _is_first_run(first_run_type: str, key="", duration=timedelta(days=1)) -> bool:
+def _is_first_run(first_run_type: str, key="", duration: Optional[timedelta] = None) -> bool:
+    duration = duration or timedelta(days=1)
+
     def cb(first_run_data: FirstRunDB) -> bool:
         # 检查是否是首次运行
         first_run = True
@@ -72,7 +79,9 @@ def _is_first_run(first_run_type: str, key="", duration=timedelta(days=1)) -> bo
         if first_run:
             first_run_data.set_update_at()
 
-        logger.debug(f"{first_run_type:7s} {first_run_data.prepare_env_and_get_db_filepath()} first_run={first_run}, data={first_run_data}")
+        logger.debug(
+            f"{first_run_type:7s} {first_run_data.prepare_env_and_get_db_filepath()} first_run={first_run}, data={first_run_data}"
+        )
 
         return first_run
 
@@ -89,7 +98,7 @@ def get_first_run_cache_filename(key) -> str:
     return FirstRunDB().with_context(key).get_db_filename()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print(is_first_run("first_run"))
     print(is_first_run_in("test_duration", timedelta(minutes=1)))
     print(is_daily_first_run("first_run_daily"))

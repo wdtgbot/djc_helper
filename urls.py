@@ -1,10 +1,33 @@
+import json
+import os
+from typing import List, Optional
+
 import requests
 
-from dao import AmsActInfo
-from util import *
+from const import cached_dir
+from dao import ActCommonInfo, AmsActInfo, IdeActInfo
+from log import color, logger
+from util import (
+    exists_flag_file,
+    format_time,
+    get_now,
+    get_past_time,
+    get_remaining_time,
+    is_act_expired,
+    make_sure_dir_exists,
+    padLeftRight,
+    parse_time,
+    start_and_end_date_of_a_month,
+    tableify,
+    try_except,
+    with_cache,
+)
+
+# 活动描述文件缓存时间
+DESC_JS_CACHE_SECONDS = 1 * 24 * 3600
 
 
-def newAmsActInfo(sActivityName, dtBeginTime, dtEndTime):
+def newNotAmsActInfo(dtBeginTime: str, dtEndTime: str, sActivityName: str) -> AmsActInfo:
     info = AmsActInfo()
     info.iActivityId = "000000"
     info.sActivityName = sActivityName
@@ -14,29 +37,33 @@ def newAmsActInfo(sActivityName, dtBeginTime, dtEndTime):
     return info
 
 
-not_know_start_time = "2000-01-01 00:00:00"
+not_know_start_time__ = "2000-01-01 00:00:00"
 # 不知道时间的统一把时间设定为后年年初-。-
-not_know_end_time = format_time(get_now().replace(year=get_now().year + 2, month=1, day=1, hour=0, second=0, microsecond=0))
+not_know_end_time____ = format_time(
+    get_now().replace(year=get_now().year + 2, month=1, day=1, hour=0, second=0, microsecond=0)
+)
 
-month_start_day, month_end_day = start_and_end_date_of_a_month(get_now())
+_msd, _med = start_and_end_date_of_a_month(get_now())
+month_start_day______, month_end_day________ = format_time(_msd), format_time(_med)
 
 not_ams_activities = [
-    newAmsActInfo("道聚城", not_know_start_time, not_know_end_time),
-    newAmsActInfo("黑钻礼包", not_know_start_time, not_know_end_time),
-    newAmsActInfo("腾讯游戏信用礼包", not_know_start_time, not_know_end_time),
-    newAmsActInfo("心悦app", not_know_start_time, not_know_end_time),
-    newAmsActInfo("管家蚊子腿", "2021-10-21 00:00:00", "2021-11-30 23:59:59"),
-    newAmsActInfo("qq视频蚊子腿", "2021-10-18 00:00:00", "2021-11-18 23:59:59"),
-    newAmsActInfo("qq视频蚊子腿-爱玩", "2021-11-26 00:00:00", "2021-12-17 23:59:59"),
-    newAmsActInfo("会员关怀", "2021-03-31 00:00:00", not_know_end_time),
-    newAmsActInfo("超级会员", "2021-11-14 00:00:00", "2021-12-14 23:59:59"),
-    newAmsActInfo("黄钻", "2021-11-14 00:00:00", "2021-12-15 23:59:59"),
-    newAmsActInfo("集卡", "2021-11-18 00:00:00", "2021-12-18 23:59:59"),
-    newAmsActInfo("DNF助手编年史", format_time(month_start_day), format_time(month_end_day)),
-    newAmsActInfo("colg每日签到", "2021-09-17 00:00:00", "2021-10-19 23:59:59"),
-    newAmsActInfo("小酱油周礼包和生日礼包", not_know_start_time, not_know_end_time),
-    newAmsActInfo("qq会员杯", "2021-09-19 00:00:00", "2021-10-5 23:59:59"),
-    newAmsActInfo("虎牙", "2021-09-11 00:00:00", "2021-10-13 23:59:59"),
+    newNotAmsActInfo(not_know_start_time__, not_know_end_time____, "道聚城"),
+    newNotAmsActInfo(not_know_start_time__, not_know_end_time____, "黑钻礼包"),
+    newNotAmsActInfo(not_know_start_time__, not_know_end_time____, "腾讯游戏信用礼包"),
+    newNotAmsActInfo(not_know_start_time__, not_know_end_time____, "心悦app"),
+    newNotAmsActInfo("2022-01-20 00:00:00", "2022-02-28 23:59:59", "管家蚊子腿"),
+    newNotAmsActInfo("2021-10-18 00:00:00", "2021-11-18 23:59:59", "qq视频蚊子腿"),
+    newNotAmsActInfo("2021-01-20 00:00:00", "2022-02-20 23:59:59", "qq视频蚊子腿-爱玩"),
+    newNotAmsActInfo("2021-03-31 00:00:00", not_know_end_time____, "会员关怀"),
+    newNotAmsActInfo("2021-01-20 00:00:00", "2022-02-28 23:59:59", "超级会员"),
+    newNotAmsActInfo("2021-01-20 00:00:00", "2022-02-28 23:59:59", "黄钻"),
+    newNotAmsActInfo("2021-01-19 00:00:00", "2022-02-20 23:59:59", "集卡"),
+    newNotAmsActInfo(month_start_day______, month_end_day________, "DNF助手编年史"),
+    newNotAmsActInfo("2022-01-20 00:00:00", "2022-03-02 23:59:59", "colg每日签到"),
+    newNotAmsActInfo(not_know_start_time__, not_know_end_time____, "小酱油周礼包和生日礼包"),
+    newNotAmsActInfo("2021-09-19 00:00:00", "2021-10-05 23:59:59", "qq会员杯"),
+    newNotAmsActInfo("2021-09-11 00:00:00", "2021-10-13 23:59:59", "虎牙"),
+    newNotAmsActInfo("2021-12-13 00:00:00", "2021-12-31 23:59:59", "WeGame活动_新版"),
 ]
 
 act_name_to_url = {
@@ -51,36 +78,48 @@ act_name_to_url = {
     "心悦app周礼包": "https://xinyue.qq.com/act/a20180906gifts/index.html",
     "dnf论坛签到": "https://dnf.gamebbs.qq.com/plugin.php?id=k_misign:sign",
     "小酱油周礼包和生日礼包": "游戏内右下角点击 小酱油 图标",
-
+    #
     # 短期付费活动
+    #
     "DNF助手编年史": "dnf助手左侧栏",
     "DNF漫画预约活动": "https://dnf.qq.com/lbact/a20210617comic/",
-    "DNF福利中心兑换": "https://dnf.qq.com/cp/a20190312welfare/index.htm",
-    "会员关怀": "https://act.qzone.qq.com/v2/vip/tx/p/1648_4615e306",
-    "hello语音网页礼包兑换": "https://dnf.qq.com/cp/a20210806dnf/",
-    "DNF集合站": "https://dnf.qq.com/lbact/a20210914jhye/index.html",
-    "管家蚊子腿": "https://sdi.3g.qq.com/v/2021101811193411406",
-    "超级会员": "https://act.qzone.qq.com//v2/vip/tx/p/2713_fddd4a39",
-    "黄钻": "https://act.qzone.qq.com//v2/vip/tx/p/2715_6a3869b6",
-    "DNF闪光杯": "https://xinyue.qq.com/act/a20211022sgb/pc/index.html",
-    "集卡": "https://act.qzone.qq.com//v2/vip/tx/p/7224_a45de826",
-    "DNF集合站_史诗之路": "https://dnf.qq.com/lbact/a20211028jhye/index.html",
-    "DNF心悦": "https://xinyue.qq.com/act/a20211108zsdc/index_pc.html",
-    "WeGame活动": "https://dnf.qq.com/lbact/a20211118wegame/index.html",
-    "DNF落地页活动": "https://dnf.qq.com/cp/a20211118index/",
-    "DNF共创投票": "http://dnf.qq.com/cp/a20210922create/page.html",
-    "DNF公会活动": "https://dnf.qq.com/cp/a20211028GH/index.html",
-    "DNF马杰洛的规划": "https://dnf.qq.com/cp/a20211122care/index.html",
-    "qq视频蚊子腿-爱玩": "https://magic.iwan.qq.com/magic-act/w5jli4iijddi98d7i8jr00hpu9/index_page1.html",
-
+    "DNF马杰洛的规划": "https://dnf.qq.com/cp/a20220324care/index.html",
+    "DNF落地页活动": "https://dnf.qq.com/cp/a20220324index/",
+    #
     # 已过期活动
+    #
+    "冒险的起点": "https://dnf.qq.com/lbact/a20220218lbaoa9f/index.html",
+    "勇士的冒险补给": "https://dnf.qq.com/lbact/a20220218lbu5p6f/indexm.html",
+    "hello语音（皮皮蟹）网页礼包兑换": "https://dnf.qq.com/cp/a20210806dnf/",
+    "DNF共创投票": "https://dnf.qq.com/cp/a20210914design/list.html",
+    "黄钻": "https://act.qzone.qq.com/v2/vip/tx/p/20683_605cb50c",
+    "超级会员": "https://act.qzone.qq.com/v2/vip/tx/p/20687_41fbdb6b",
+    "管家蚊子腿": "https://sdi.3g.qq.com/v/2022011118372511947",
+    "dnf助手活动Dup": "https://mwegame.qq.com/act/dnf/a20211216newyear/indexpc.html",
+    "DNF福利中心兑换": "https://dnf.qq.com/cp/a20190312welfare/index.htm",
+    "魔界人探险记": "https://dnf.qq.com/cp/a20220121random/index.html",
+    "会员关怀": "https://act.qzone.qq.com/v2/vip/tx/p/7477_6c7b7f17",
+    "组队拜年": "https://dnf.qq.com/cp/a20211221BN/index.html",
+    "WeGame活动": "https://dnf.qq.com/lbact/a20220119wegame/index.html",
+    "DNF集合站": "https://dnf.qq.com/lbact/a20220121gather/",
+    "qq视频蚊子腿-爱玩": "https://magic.iwan.qq.com/magic-act/iuc6hayzjxw2it907a4q7yerkg/index_page1.html",
+    "集卡": "https://act.qzone.qq.com/v2/vip/tx/p/20545_145ba002",
+    "DNF心悦": "https://xinyue.qq.com/act/a20211209xinchun/share.html",
+    "dnf助手活动": "https://mwegame.qq.com/act/dnf/a20211209plants/indexpc.html",
+    "新职业预约活动": "https://dnf.qq.com/cp/a20211130reserve/index.html",
+    "DNF集合站_史诗之路": "https://dnf.qq.com/lbact/a20211028jhye/index.html",
+    "WeGame活动_新版": "https://act.wegame.com.cn/wand/danji/a20211201DNFCarnival/",
+    "DNF娱乐赛": "https://dnf.qq.com/cp/a20211219dnfyulesai/index.html",
+    "DNF公会活动": "https://dnf.qq.com/cp/a20211028GH/index.html",
+    "DNF闪光杯": "https://xinyue.qq.com/act/a20211022sgb/pc/index.html",
+    "关怀活动": "https://dnf.qq.com/lbact/a20211118care/index.html",
+    "DNF记忆": "https://dnf.qq.com/cp/a20211203dnfmem/index.html",
+    "DNF预约": "https://dnf.qq.com/cp/a20211115dnf/",
+    "DNF名人堂": "https://dnf.qq.com/cp/hof20211123/index.html",
     "qq视频蚊子腿": "https://m.film.qq.com/magic-act/yauhs87ql00t63xttwkas8papl/index_index.html",
     "KOL": "https://dnf.qq.com/lbact/a20211014kol2/index.html",
     "WeGameDup": "https://dnf.qq.com/lbact/a20211014wg/index.html",
-    "dnf助手活动": "https://mwegame.qq.com/act/dnf/destiny/index",
-    "勇士的冒险补给": "https://dnf.qq.com/lbact/a20210622lb0wcuh/index.html",
     "轻松之路": "https://dnf.qq.com/cp/a20210914qszlm/index.html",
-    "关怀活动": "http://dnf.qq.com/lbact/a20210914care/",
     "colg每日签到": "https://bbs.colg.cn/forum-171-1.html",
     "命运的抉择挑战赛": "https://dnf.qq.com/cp/a20210826fate/index.html",
     "虎牙": "https://www.huya.com/367967",
@@ -101,7 +140,6 @@ act_name_to_url = {
     "管家蚊子腿-旧版": "https://guanjia.qq.com/act/cop/20210425dnf/pc/",
     "DNF十三周年庆活动": "https://dnf.qq.com/cp/a20210524fete/index.html",
     "DNF周年庆登录活动": "https://dnf.qq.com/cp/a20210618anniversary/index.html",
-    "刃影预约活动": "https://dnf.qq.com/cp/a20210618reserve/index.html",
     "DNF格斗大赛": "https://dnf.qq.com/cp/a20210405pk/",
     "DNF奥兹玛竞速": "https://xinyue.qq.com/act/a20210526znqhd/index.html",
     "我的dnf13周年活动": "https://dnf.qq.com/cp/a20210604history/index.html",
@@ -156,8 +194,12 @@ class Urls:
         self.bind_role = "https://djcapp.game.qq.com/daoju/djcapp/v5/rolebind/BindRole.php?p_tk={p_tk}&type=2&biz=dnf&output_format=jsonp&_={millseconds}&role_info={role_info}"
 
         # 查询服务器列表，需要手动额外传入参数：bizcode。具体游戏参数可查阅djc_biz_list.json
-        self.query_game_server_list = "https://gameact.qq.com/comm-htdocs/js/game_area/utf8verson/{bizcode}_server_select_utf8.js"
-        self.query_game_server_list_for_web = "https://gameact.qq.com/comm-htdocs/js/game_area/{bizcode}_server_select.js"
+        self.query_game_server_list = (
+            "https://gameact.qq.com/comm-htdocs/js/game_area/utf8verson/{bizcode}_server_select_utf8.js"
+        )
+        self.query_game_server_list_for_web = (
+            "https://gameact.qq.com/comm-htdocs/js/game_area/{bizcode}_server_select.js"
+        )
 
         # 查询手游礼包礼包，需要手动额外传入参数：bizcode
         self.query_game_gift_bags = "https://djcapp.game.qq.com/daoju/igw/main/?_service=app.package.list&bizcode={bizcode}&appVersion={appVersion}&p_tk={p_tk}&sDeviceID={sDeviceID}&sDjcSign={sDjcSign}&output_format=json&optype=get_user_package_list&appid=1001&&weexVersion=0.9.4&platform=android&deviceModel=MIX%202&showType=qq&osVersion=Android-28&ch=10003&sVersionName=v4.1.6.0&appSource=android"
@@ -184,61 +226,88 @@ class Urls:
         self.iActivityId_dnf_rank = "347456"  # DNF-2020年KOL榜单建设送黑钻
         self.iActivityId_dnf_carnival = "346329"  # DNF嘉年华页面主页面签到-pc
         self.iActivityId_dnf_carnival_live = "346830"  # DNF嘉年华直播页面-PC
-        self.iActivityId_dnf_dianzan = "419223"  # DNF2020共创投票领礼包需求
+        self.iActivityId_dnf_dianzan = "441065"  # DNF2020共创投票领礼包需求
         self.iActivityId_dnf_welfare = "215651"  # DNF福利中心兑换
-        self.iActivityId_dnf_welfare_login_gifts = "407607"  # DNF福利中心-登陆游戏领福利
+        self.iActivityId_dnf_welfare_login_gifts = "441426"  # DNF福利中心-登陆游戏领福利
         self.iActivityId_xinyue_financing = "126962"  # 心悦app理财礼卡
         self.iActivityId_xinyue_cat = "141920"  # 心悦猫咪
         self.iActivityId_xinyue_weekly_gift = "155525"  # 心悦app周礼包
         self.iActivityId_dnf_drift = "348890"  # dnf漂流瓶
         self.iActivityId_majieluo = "425557"  # DNF马杰洛的规划
-        self.iActivityId_dnf_helper = "404886"  # DNF助手活动
+        self.iActivityId_dnf_helper = "434331"  # DNF助手活动
+        self.iActivityId_dnf_helper_dup = "438820"  # DNF助手活动
         self.iActivityId_warm_winter = "347445"  # 暖冬有礼
         self.iActivityId_qq_video_amesvr = "398546"  # qq视频-AME活动
-        self.iActivityId_dnf_bbs = "397645"  # DNF论坛积分兑换活动
-        self.iActivityId_dnf_bbs_dup = "384854"  # DNF论坛积分兑换活动
-        self.iActivityId_dnf_luodiye = "419868"  # DNF落地页活动需求
-        self.iActivityId_dnf_wegame = "425699"  # WeGame活动
+        self.iActivityId_dnf_bbs_v1 = "431448"  # DNF论坛积分兑换活动
+        self.iActivityId_dnf_bbs_v2 = "397645"  # DNF论坛积分兑换活动
+        self.iActivityId_dnf_luodiye = "454695"  # DNF落地页活动需求
+        self.iActivityId_dnf_wegame = "442952"  # WeGame活动
         self.iActivityId_dnf_wegame_dup = "415808"  # WeGame活动
         self.iActivityId_spring_fudai = "354771"  # 新春福袋大作战
         self.iActivityId_dnf_fuqian = "362403"  # DNF福签大作战
-        self.iActivityId_dnf_collection = "408935"  # DNF集合站
+        self.iActivityId_dnf_collection = "443735"  # DNF集合站
         self.iActivityId_dnf_collection_dup = "423011"  # DNF集合站
         self.iActivityId_firecrackers = "355187"  # 燃放爆竹活动
         self.iActivityId_dnf_ozma = "382419"  # DNF奥兹玛竞速
-        self.iActivityId_hello_voice = "396564"  # hello语音奖励兑换
+        self.iActivityId_hello_voice = "438826"  # hello语音（皮皮蟹）奖励兑换
         self.iActivityId_dnf_pk = "370758"  # DNF格斗大赛
-        self.iActivityId_dnf_xinyue = "422200"  # DNF心悦
+        self.iActivityId_dnf_xinyue = "433531"  # DNF心悦
         self.iActivityId_dnf_strong = "366330"  # DNF强者之路
         self.iActivityId_dnf_comic = "386057"  # DNF&腾讯动漫周年庆合作活动
         self.iActivityId_dnf_13 = "381033"  # DNF十三周年庆双端站点
         self.iActivityId_dnf_my_story = "382161"  # 我的dnf13周年活动
-        self.iActivityId_dnf_reserve = "384604"  # 刃影预约活动
+        self.iActivityId_dnf_reserve = "430779"  # 新职业预约活动
         self.iActivityId_dnf_anniversary = "382072"  # DNF周年庆登录活动
         self.iActivityId_dnf_kol = "416057"  # DNF KOL
-        self.iActivityId_maoxian = "407067"  # 勇士的冒险补给
-        self.iActivityId_maoxian_dup = "405979"  # 勇士的冒险补给-回归玩家
+        self.iActivityId_maoxian_start = "451458"  # 冒险的起点
+        self.iActivityId_maoxian = "450381"  # 勇士的冒险补给
         self.iActivityId_dnf_gonghui = "421277"  # DNF公会活动
         self.iActivityId_dnf_mingyun_jueze = "405654"  # 命运的抉择挑战赛
-        self.iActivityId_dnf_guanhuai = "406829"  # 关怀活动
+        self.iActivityId_dnf_guanhuai = "421327"  # 关怀活动
         self.iActivityId_dnf_relax_road = "407354"  # 轻松之路
+        self.iActivityId_dnf_vote = "428587"  # DNF名人堂
+        self.iActivityId_dnf_reservation = "425797"  # DNF预约
+        self.iActivityId_dnf_memory = "431712"  # DNF记忆
+        self.iActivityId_dnf_game = "427765"  # DNF娱乐赛
+        self.iActivityId_team_happy_new_year = "438251"  # 组队拜年
 
         # amesvr通用活动系统配置
         # 需要手动额外传入参数：sMiloTag, sServiceDepartment, sServiceType
         self.amesvr = "https://{amesvr_host}/ams/ame/amesvr?ameVersion=0.3&sSDID={sSDID}&sMiloTag={sMiloTag}&sServiceType={sServiceType}&iActivityId={iActivityId}&sServiceDepartment={sServiceDepartment}&isXhrPost=true"
         # &sArea={sArea}&sRoleId={sRoleId}&uin={uin}&userId={userId}&token={token}&sRoleName={sRoleName}&serverId={serverId}&skey={skey}&nickName={nickName}
         # 需要手动额外传入参数：iFlowId/package_id/lqlevel/teamid, sServiceDepartment/sServiceType, sArea/serverId/nickName/sRoleId/sRoleName/uin/skey/userId/token, date
-        self.amesvr_raw_data = "iActivityId={iActivityId}&g_tk={g_tk}&iFlowId={iFlowId}&package_id={package_id}&xhrPostKey=xhr_{millseconds}&eas_refer=http%3A%2F%2Fnoreferrer%2F%3Freqid%3D{uuid}%26version%3D23&lqlevel={lqlevel}" \
-                               "&teamid={teamid}&weekDay={weekDay}&e_code=0&g_code=0&eas_url={eas_url}&xhr=1&sServiceDepartment={sServiceDepartment}&sServiceType={sServiceType}&sArea={sArea}&sRoleId={sRoleId}&uin={uin}" \
-                               "&userId={userId}&token={token}&sRoleName={sRoleName}&serverId={serverId}&areaId={areaId}&skey={skey}&nickName={nickName}&date={date}&dzid={dzid}&page={page}&iPackageId={iPackageId}&plat={plat}" \
-                               "&extraStr={extraStr}&sContent={sContent}&sPartition={sPartition}&sAreaName={sAreaName}&md5str={md5str}&ams_checkparam={ams_checkparam}&checkparam={checkparam}&type={type}&moduleId={moduleId}" \
-                               "&giftId={giftId}&acceptId={acceptId}&invitee={invitee}&giftNum={giftNum}&sendQQ={sendQQ}&receiver={receiver}&receiverName={receiverName}&inviterName={inviterName}&user_area={user_area}" \
-                               "&user_partition={user_partition}&user_areaName={user_areaName}&user_roleId={user_roleId}&user_roleName={user_roleName}&user_roleLevel={user_roleLevel}&user_checkparam={user_checkparam}" \
-                               "&user_md5str={user_md5str}&user_sex={user_sex}&user_platId={user_platId}&cz={cz}&dj={dj}&siActivityId={siActivityId}&needADD={needADD}&dateInfo={dateInfo}&sId={sId}&userNum={userNum}" \
-                               "&cardType={cardType}&inviteId={inviteId}&sendName={sendName}&receiveUin={receiveUin}&receiverUrl={receiverUrl}&index={index}&pageNow={pageNow}&pageSize={pageSize}&clickTime={clickTime}" \
-                               "&username={username}&petId={petId}&skin_id={skin_id}&decoration_id={decoration_id}&fuin={fuin}&sCode={sCode}&sNickName={sNickName}&iId={iId}&sendPage={sendPage}&hello_id={hello_id}" \
-                               "&prize={prize}&qd={qd}&iReceiveUin={iReceiveUin}&map1={map1}&map2={map2}&len={len}&itemIndex={itemIndex}&sRole={sRole}&loginNum={loginNum}&level={level}&inviteUin={inviteUin}" \
-                               "&iGuestUin={iGuestUin}&ukey={ukey}&iGiftID={iGiftID}&iInviter={iInviter}&iPageNow={iPageNow}&iPageSize={iPageSize}&iType={iType}&iWork={iWork}&iPage={iPage}&sNick={sNick}"
+        self.amesvr_raw_data = (
+            "iActivityId={iActivityId}&g_tk={g_tk}&iFlowId={iFlowId}&package_id={package_id}&xhrPostKey=xhr_{millseconds}&eas_refer=http%3A%2F%2Fnoreferrer%2F%3Freqid%3D{uuid}%26version%3D23&lqlevel={lqlevel}"
+            "&teamid={teamid}&weekDay={weekDay}&e_code=0&g_code=0&eas_url={eas_url}&xhr=1&sServiceDepartment={sServiceDepartment}&sServiceType={sServiceType}&sArea={sArea}&sRoleId={sRoleId}&uin={uin}"
+            "&userId={userId}&token={token}&sRoleName={sRoleName}&serverId={serverId}&areaId={areaId}&skey={skey}&nickName={nickName}&date={date}&dzid={dzid}&page={page}&iPackageId={iPackageId}&plat={plat}"
+            "&extraStr={extraStr}&sContent={sContent}&sPartition={sPartition}&sAreaName={sAreaName}&md5str={md5str}&ams_checkparam={ams_checkparam}&checkparam={checkparam}&type={type}&moduleId={moduleId}"
+            "&giftId={giftId}&acceptId={acceptId}&invitee={invitee}&giftNum={giftNum}&sendQQ={sendQQ}&receiver={receiver}&receiverName={receiverName}&inviterName={inviterName}&user_area={user_area}"
+            "&user_partition={user_partition}&user_areaName={user_areaName}&user_roleId={user_roleId}&user_roleName={user_roleName}&user_roleLevel={user_roleLevel}&user_checkparam={user_checkparam}"
+            "&user_md5str={user_md5str}&user_sex={user_sex}&user_platId={user_platId}&cz={cz}&dj={dj}&siActivityId={siActivityId}&needADD={needADD}&dateInfo={dateInfo}&sId={sId}&userNum={userNum}"
+            "&cardType={cardType}&inviteId={inviteId}&sendName={sendName}&receiveUin={receiveUin}&receiverUrl={receiverUrl}&index={index}&pageNow={pageNow}&pageSize={pageSize}&clickTime={clickTime}"
+            "&username={username}&petId={petId}&skin_id={skin_id}&decoration_id={decoration_id}&fuin={fuin}&sCode={sCode}&sNickName={sNickName}&iId={iId}&sendPage={sendPage}&hello_id={hello_id}"
+            "&prize={prize}&qd={qd}&iReceiveUin={iReceiveUin}&map1={map1}&map2={map2}&len={len}&itemIndex={itemIndex}&sRole={sRole}&loginNum={loginNum}&level={level}&inviteUin={inviteUin}"
+            "&iGuestUin={iGuestUin}&ukey={ukey}&iGiftID={iGiftID}&iInviter={iInviter}&iPageNow={iPageNow}&iPageSize={iPageSize}&iType={iType}&iWork={iWork}&iPage={iPage}&sNick={sNick}"
+            "&iMatchId={iMatchId}&iGameId={iGameId}&iIPId={iIPId}&iVoteId={iVoteId}&iResult={iResult}&personAct={personAct}&teamAct={teamAct}&param={param}&dhnums={dhnums}&sUin={sUin}&pointID={pointID}"
+            "&workId={workId}&isSort={isSort}&jobName={jobName}&title={title}"
+        )
+
+        # ide通用活动
+        # 其对应活动描述文件一般可通过下列链接获取，其中{actId}替换为活动ID
+        #   https://comm.ams.game.qq.com/ide/page/{actId}
+        #
+        # note: 在活动页面 网络请求 过滤 ide/page/ 即可定位到活动id
+        self.ide_iActivityId_dnf_social_relation_permission = "14_uK7KKe"  # DNF关系链接-用户授权接口
+        self.ide_iActivityId_majieluo = "49_tLS8bo"  # DNF马杰洛的规划
+        self.ide_iActivityId_mojieren = "86_OLju2H"  # 魔界人探险记
+
+        self.ide = "https://{ide_host}/ide/"
+        self.ide_raw_data = (
+            "iChartId={iChartId}&iSubChartId={iSubChartId}&sIdeToken={sIdeToken}"
+            "&sRoleId={sRoleId}&sRoleName={sRoleName}&sArea={sArea}&sMd5str={sMd5str}&sCheckparam={sCheckparam}&roleJob={roleJob}&sAreaName={sAreaName}"
+            "&sAuthInfo={sAuthInfo}&sActivityInfo={sActivityInfo}&openid={openid}&sCode={sCode}&startPos={startPos}"
+            "&e_code=0&g_code=0&eas_url={eas_url}&eas_refer={eas_refer}"
+        )
 
         # DNF共创投票
         # 查询作品列表，额外参数：iCategory1、iCategory2、page、pagesize
@@ -247,10 +316,14 @@ class Urls:
         self.dianzan = "https://apps.game.qq.com/cms/index.php?r={rand}&callback=jQuery19105114998760002998_{millseconds}&serviceType=dnf&actId=2&sModel=Zan&sAction=zanContent&iContentId={iContentId}&_={millseconds}"
 
         # 每月黑钻等级礼包
-        self.heizuan_gift = "https://dnf.game.qq.com/mtask/lottery/?r={rand}&serviceType=dnf&channelId=1&actIdList=44c24e"
+        self.heizuan_gift = (
+            "https://dnf.game.qq.com/mtask/lottery/?r={rand}&serviceType=dnf&channelId=1&actIdList=44c24e"
+        )
 
         # 信用星级礼包
-        self.credit_gift = "https://dnf.game.qq.com/mtask/lottery/?r={rand}&serviceType=dnf&channelId=1&actIdList=13c48b"
+        self.credit_gift = (
+            "https://dnf.game.qq.com/mtask/lottery/?r={rand}&serviceType=dnf&channelId=1&actIdList=13c48b"
+        )
 
         # 腾讯游戏信用，需要手动额外传入参数：gift_group
         self.credit_xinyue_gift = "https://gamecredit.qq.com/api/qq/proxy/credit_xinyue_gift?gift_group={gift_group}"
@@ -261,13 +334,23 @@ class Urls:
 
         # 新的qq空间接口
         self.qzone_activity_new = "https://act.qzone.qq.com/v2/vip/tx/trpc/subact/ExecAct"
-        self.qzone_activity_new_query = "https://act.qzone.qq.com/v2/vip/tx/proxy/domain/trpc.qzone.qq.com/trpc/subact/QueryAct"
+        self.qzone_activity_new_query = (
+            "https://act.qzone.qq.com/v2/vip/tx/proxy/domain/trpc.qzone.qq.com/trpc/subact/QueryAct"
+        )
         self.qzone_activity_new_send_card = "https://act.qzone.qq.com/v2/vip/tx/trpc/xcard/GiftItems?g_tk={g_tk}"
-        self.qzone_activity_new_query_card = "https://act.qzone.qq.com/v2/vip/tx/trpc/xcard/QueryItems?g_tk={g_tk}&packetID={packetID}"
+        self.qzone_activity_new_query_card = (
+            "https://act.qzone.qq.com/v2/vip/tx/trpc/xcard/QueryItems?g_tk={g_tk}&packetID={packetID}"
+        )
+        self.qzone_activity_new_request_card = "https://act.qzone.qq.com/v2/vip/tx/trpc/xcard/RequestItems?g_tk={g_tk}"
+        self.qzone_activity_new_agree_request_card = (
+            "https://club.vip.qq.com/qqvip/api/trpc/xcard/RequestItems?token={token}&t={rand}&g_tk={g_tk}"
+        )
         # 本地假设的集卡活动id，每次新版的集卡更新时，就增加一下这个（如果继续出旧版的那种集卡活动，则不需要修改这个）
-        self.pesudo_ark_lottery_act_id = 10002
+        self.pesudo_ark_lottery_act_id = 10004
 
-        self.qzone_activity_club_vip = "https://club.vip.qq.com/qqvip/api/tianxuan/access/execAct?g_tk={g_tk}&isomorphism-args={isomorphism_args}"
+        self.qzone_activity_club_vip = (
+            "https://club.vip.qq.com/qqvip/api/tianxuan/access/execAct?g_tk={g_tk}&isomorphism-args={isomorphism_args}"
+        )
 
         # 抽卡相关
         self.ark_lottery_page = get_act_url("集卡")
@@ -299,18 +382,25 @@ class Urls:
 
         # dnf助手编年史活动
         # wang.xinyue相关接口，额外参数：api: 具体api名称，userId（助手userId），sPartition/sRoleId, isLock->isLock, amsid->sLbCode, iLbSel1->iLbSel1, 区分自己还是队友的基础奖励, num: 1, mold: 1-自己，2-队友,  exNum->1, iCard->iCard, iNum->iNum
-        self.dnf_helper_chronicle_wang_xinyue = "https://wang.xinyue.qq.com/peak/{api}?userId={userId}&gameId=1006&sPartition={sPartition}&sRoleId={sRoleId}&game_code=dnf&token={token}&uin={uin}&uniqueRoleId={uniqueRoleId}&isLock={isLock}&amsid={amsid}&iLbSel1={iLbSel1}&num={num}&mold={mold}&exNum={exNum}&iCard={iCard}&iNum={iNum}&appidTask=1000042"
+        self.dnf_helper_chronicle_wang_xinyue = "https://wang.xinyue.qq.com/peak/{api}?userId={userId}&gameId=1006&sPartition={sPartition}&sRoleId={sRoleId}&game_code=dnf&token={token}&uin={uin}&toUin={toUin}&uniqueRoleId={uniqueRoleId}&isLock={isLock}&amsid={amsid}&iLbSel1={iLbSel1}&num={num}&mold={mold}&exNum={exNum}&iCard={iCard}&iNum={iNum}&appidTask=1000042&"
         # mwegame相关接口，额外参数：api: 具体api名称，userId（助手userId），sPartition/sRoleId, actionId: 自己的任务为任务信息中的各个任务的mActionId，队友的任务对应的是各个任务的pActionId
         self.dnf_helper_chronicle_mwegame = "https://mwegame.qq.com/act/GradeExp/ajax/{api}?userId={userId}&gameId=1006&sPartition={sPartition}&sRoleId={sRoleId}&game_code=dnf&actionId={actionId}&pUserId={pUserId}&isBind={isBind}"
+        # 账号绑定信息
+        self.dnf_helper_chronicle_binding = "https://mwegame.qq.com/yoyo/dnf/getcheatguardbinding"
+        # 新版接口
+        self.dnf_helper_chronicle_yoyo = "https://mwegame.qq.com/yoyo/dnf/{api}"
 
         # 助手活动相关接口
         self.dnf_helper = "https://mwegame.qq.com/act/dnf/destiny/{api}?gameId=10014&roleSwitch=1&toOpenid=&roleId={roleId}&uniqueRoleId={uniqueRoleId}&openid=&serverName={serverName}&toUin={toUin}&cGameId=1006&userId={userId}&serverId={serverId}&token={token}&isMainRole=0&subGameId=10014&areaId={areaId}&gameName=DNF&areaName={areaName}&roleJob={roleJob}&nickname={nickname}&roleName={roleName}&uin={uin}&roleLevel={roleLevel}&"
 
-        # hello语音，额外参数：api，hello_id，type，packid
+        # hello语音（皮皮蟹），额外参数：api，hello_id，type，packid
         self.hello_voice = "https://ulink.game.qq.com/app/1164/c7028bb806cd2d6c/index.php?route=Raward/{api}&iActId=1192&ulenv=&game=dnf&hello_id={hello_id}&type={type}&packid={packid}"
 
         # dnf论坛签到，额外参数：formhash: 论坛formhash
-        self.dnf_bbs_signin = "https://dnf.gamebbs.qq.com/plugin.php?id=k_misign:sign&operation=qiandao&formhash={formhash}&format=empty"
+        self.dnf_bbs_signin = (
+            "https://dnf.gamebbs.qq.com/plugin.php?id=k_misign:sign&operation=qiandao&formhash={formhash}&format=empty"
+        )
+        self.dnf_bbs_home = "https://dnf.gamebbs.qq.com/home.php?mod=spacecp&ac=credit"
 
         # 心悦app
         # 心悦猫咪api
@@ -319,24 +409,39 @@ class Urls:
         # colg
         self.colg_url = "https://bbs.colg.cn/forum-171-1.html"
         self.colg_sign_in_url = "https://bbs.colg.cn/plugin.php?id=colg_pass_activity&act=passUserSign"
-        self.colg_take_sign_in_credits = "https://bbs.colg.cn/plugin.php?id=colg_pass_activity&act=getUserCredit&aid={aid}&task_id={task_id}"
+        self.colg_take_sign_in_credits = (
+            "https://bbs.colg.cn/plugin.php?id=colg_pass_activity&act=getUserCredit&aid={aid}&task_id={task_id}"
+        )
 
         # 小酱油
-        self.xiaojiangyou_get_role_id = "https://user.game.qq.com/php/helper/xychat/open/redirect/1/2?areaId={areaId}&roleName={roleName}"
+        self.xiaojiangyou_get_role_id = (
+            "https://user.game.qq.com/php/helper/xychat/open/redirect/1/2?areaId={areaId}&roleName={roleName}"
+        )
         self.xiaojiangyou_query_info = "https://xyapi.game.qq.com/xiaoyue/service/async?_={millseconds}&callback=jQuery171004811813596127945_{millseconds}"
         self.xiaojiangyou_init_page = "https://xyapi.game.qq.com/xiaoyue/service/init?_={millseconds}&callback=jQuery171004811813596127945_{millseconds}&_={millseconds}"
         self.xiaojiangyou_ask_question = "https://xyapi.game.qq.com/xiaoyue/service/ask?_={millseconds}&question={question}&question_id={question_id}&robot_type={robot_type}&option_type=0&filter={question}&rec_more=&certificate={certificate}&callback=jQuery171004811813596127945_{millseconds}&_={millseconds}"
         self.xiaojiangyou_get_packge = "https://xyapi.game.qq.com/xiaoyue/helper/package/get?_={millseconds}&token={token}&ams_id={ams_id}&package_group_id={package_group_id}&tool_id={tool_id}&certificate={certificate}&callback=jQuery171039455388263754454_{millseconds}&_={millseconds}"
 
-    def show_current_valid_act_infos(self):
-        acts = []
+        # WeGame新版活动，需要填写 flow_id
+        # md5签名内容
+        #   /service/flow/v1/parse/Wand-20211206100115-Fde55ab61e52f?u=7636ee76-dc95-42e2-ac8c-af7f07982dfd&a=10004&ts=1639583575&appkey=wegame!#act$2020
+        # 计算md5签名之后
+        #   /service/flow/v1/parse/Wand-20211206100115-Fde55ab61e52f?u=7636ee76-dc95-42e2-ac8c-af7f07982dfd&a=10004&ts=1639583575&s=7f2eeec828830f249a7694d09833c50d
+        self.wegame_new_host = "https://act.wegame.com.cn"
+        self.wegame_new_api = "/service/flow/v1/parse/{flow_id}?u={uuid4}&a=10004&ts={seconds}"
+        self.wegame_new_appkey = "wegame!#act$2020"
 
+    def show_current_valid_act_infos(self):
+        acts: List[ActCommonInfo] = []
+
+        # others
         for not_ams_act in not_ams_activities:
             if is_act_expired(not_ams_act.dtEndTime):
                 continue
 
-            acts.append(not_ams_act)
+            acts.append(not_ams_act.get_common_info())
 
+        # ams
         for attr_name, act_id in self.__dict__.items():
             if not attr_name.startswith("iActivityId_"):
                 continue
@@ -352,12 +457,30 @@ class Urls:
             if is_act_expired(act.dtEndTime):
                 continue
 
-            acts.append(act)
+            acts.append(act.get_common_info())
+
+        # ide
+        for attr_name, act_id in self.__dict__.items():
+            if not attr_name.startswith("ide_iActivityId_"):
+                continue
+
+            # 部分电脑上可能会在这一步卡住，因此加一个标志项，允许不启用活动
+            if exists_flag_file("不查询活动.txt"):
+                continue
+
+            act = search_ide_act(act_id)
+            if act is None:
+                continue
+
+            if is_act_expired(act.get_endtime()):
+                continue
+
+            acts.append(act.get_common_info(act_id))
 
         acts.sort(key=lambda act: act.dtEndTime)
 
         heads = ["序号", "活动名称", "活动ID", "开始时间", "结束时间", "剩余时间"]
-        colSizes = [4, 44, 8, 20, 20, 14]
+        colSizes = [4, 44, 10, 20, 20, 14]
 
         table = ""
         table += "\n" + tableify(heads, colSizes)
@@ -370,19 +493,27 @@ class Urls:
             remaining_times = parse_time(act.dtEndTime) - get_now()
             remaining_times = f"{remaining_times.days:3d} 天 {remaining_times.seconds // 3600} 小时"
 
-            table += "\n" + color(line_color) + tableify([idx + 1, print_act_name, act.iActivityId, act.dtBeginTime, act.dtEndTime, remaining_times], colSizes, need_truncate=False)
+            table += (
+                "\n"
+                + color(line_color)
+                + tableify(
+                    [idx + 1, print_act_name, act.iActivityId, act.dtBeginTime, act.dtEndTime, remaining_times],
+                    colSizes,
+                    need_truncate=False,
+                )
+            )
 
         logger.info(table)
 
 
 @try_except()
-def search_act(actId):
+def search_act(actId) -> Optional[AmsActInfo]:
     actId = str(actId)
     act_desc_js = get_act_desc_js(actId)
     if act_desc_js == "":
         return None
 
-    v = act_desc_js.strip().replace('\r', '\n').split('\n')
+    v = act_desc_js.strip().replace("\r", "\n").split("\n")
 
     for line in v:
         if not line.startswith("var ams_actdesc="):
@@ -400,15 +531,18 @@ def search_act(actId):
 def get_act_desc_js(actId):
     actId = str(actId)
 
-    a_week_seconds = 7 * 24 * 3600
-
-    act_cache_file = with_cache("act_desc", actId, cache_max_seconds=a_week_seconds, cache_miss_func=lambda: download_act_desc_js(actId),
-                                cache_validate_func=lambda filepath: os.path.isfile(filepath))
+    act_cache_file = with_cache(
+        "act_desc",
+        actId,
+        cache_max_seconds=DESC_JS_CACHE_SECONDS,
+        cache_miss_func=lambda: download_act_desc_js(actId),
+        cache_validate_func=lambda filepath: os.path.isfile(filepath),
+    )
 
     if not os.path.exists(act_cache_file):
         return ""
 
-    with open(act_cache_file, 'r', encoding="utf-8") as f:
+    with open(act_cache_file, encoding="utf-8") as f:
         return f.read()
 
 
@@ -419,9 +553,9 @@ def download_act_desc_js(actId: str) -> str:
 
     # 然后从服务器获取活动信息
     actUrls = [
-        f'https://dnf.qq.com/comm-htdocs/js/ams/actDesc/{last_three}/{actId}/act.desc.js',
-        f'https://apps.game.qq.com/comm-htdocs/js/ams/actDesc/{last_three}/{actId}/act.desc.js',
-        f'https://apps.game.qq.com/comm-htdocs/js/ams/v0.2R02/act/{actId}/act.desc.js',
+        f"https://dnf.qq.com/comm-htdocs/js/ams/actDesc/{last_three}/{actId}/act.desc.js",
+        f"https://apps.game.qq.com/comm-htdocs/js/ams/actDesc/{last_three}/{actId}/act.desc.js",
+        f"https://apps.game.qq.com/comm-htdocs/js/ams/v0.2R02/act/{actId}/act.desc.js",
     ]
     for url in actUrls:
         res = requests.get(url, timeout=1)
@@ -429,7 +563,7 @@ def download_act_desc_js(actId: str) -> str:
             continue
 
         make_sure_dir_exists(act_cache_dir)
-        with open(act_cache_file, 'w', encoding="utf-8") as f:
+        with open(act_cache_file, "w", encoding="utf-8") as f:
             f.write(res.text)
 
         return act_cache_file
@@ -437,16 +571,80 @@ def download_act_desc_js(actId: str) -> str:
     return ""
 
 
+@try_except()
+def search_ide_act(actId: str) -> Optional[IdeActInfo]:
+    actId = str(actId)
+    act_desc_json = get_ide_act_desc_json(actId)
+    if act_desc_json == "":
+        return None
+
+    raw_act_info = json.loads(act_desc_json)
+    info = IdeActInfo().auto_update_config(raw_act_info)
+
+    return info
+
+
+def get_ide_act_desc_json(actId) -> str:
+    actId = str(actId)
+
+    act_cache_file = with_cache(
+        "ide_act_desc",
+        actId,
+        cache_max_seconds=DESC_JS_CACHE_SECONDS,
+        cache_miss_func=lambda: download_ide_act_desc_json(actId),
+        cache_validate_func=lambda filepath: os.path.isfile(filepath),
+    )
+
+    if not os.path.exists(act_cache_file):
+        return ""
+
+    with open(act_cache_file, encoding="utf-8") as f:
+        return f.read()
+
+
+def download_ide_act_desc_json(actId: str) -> str:
+    first_two = str(actId[:2])
+    act_cache_dir = f"{cached_dir}/ideActDesc/{first_two}"
+    act_cache_file = f"{act_cache_dir}/{actId}.json"
+
+    # 然后从服务器获取活动信息
+    url = f"https://comm.ams.game.qq.com/ide/page/{actId}"
+
+    res = requests.get(url, timeout=1)
+    if res.status_code != 200:
+        return ""
+
+    make_sure_dir_exists(act_cache_dir)
+    with open(act_cache_file, "w", encoding="utf-8") as f:
+        f.write(res.text)
+
+    return act_cache_file
+
+
 def get_ams_act_desc(actId: str) -> str:
     act = get_ams_act(actId)
     if act is None:
         return ""
 
-    return format_act(act)
+    return format_act(act.iActivityId, act.sActivityName, act.dtBeginTime, act.dtEndTime)
 
 
 def get_ams_act(actId: str) -> Optional[AmsActInfo]:
     act = search_act(actId)
+    return act
+
+
+def get_ide_act_desc(actId: str) -> str:
+    act = get_ide_act(actId)
+    if act is None:
+        return ""
+
+    action = act.dev.action
+    return format_act(actId, action.sName, action.sUpDate, action.sDownDate)
+
+
+def get_ide_act(actId: str) -> Optional[IdeActInfo]:
+    act = search_ide_act(actId)
     return act
 
 
@@ -455,7 +653,7 @@ def get_not_ams_act_desc(act_name: str) -> str:
     if act is None:
         return f"未找到活动 {act_name} 的相关信息"
 
-    return format_act(act)
+    return format_act(act.iActivityId, act.sActivityName, act.dtBeginTime, act.dtEndTime)
 
 
 def get_not_ams_act(act_name: str) -> Optional[AmsActInfo]:
@@ -466,26 +664,26 @@ def get_not_ams_act(act_name: str) -> Optional[AmsActInfo]:
     return None
 
 
-def format_act(act: AmsActInfo, needPadding=False):
-    act_name = act.sActivityName
+def format_act(act_id: str, act_name: str, begin_time: str, end_time: str, needPadding=False):
     if needPadding:
-        act_name = padLeftRight(act.sActivityName, 44, mode='left')
+        act_name = padLeftRight(act_name, 44, mode="left")
 
-    msg = f"活动 {act_name}({act.iActivityId})"
+    msg = f"活动 {act_name}({act_id})"
 
-    if act.dtEndTime != "":
-        msg += f" 开始时间为 {act.dtBeginTime}，结束时间为 {act.dtEndTime}，"
-        if not is_act_expired(act.dtEndTime):
-            msg += f"距离结束还有 {get_remaining_time(act.dtEndTime)}"
+    if end_time != "":
+        msg += f" 开始时间为 {begin_time}，结束时间为 {end_time}，"
+        if not is_act_expired(end_time):
+            msg += f"距离结束还有 {get_remaining_time(end_time)}"
         else:
-            msg += f"已经结束了 {get_past_time(act.dtEndTime)}"
+            msg += f"已经结束了 {get_past_time(end_time)}"
     else:
         msg += " 尚无已知的开始和结束时间"
 
     return msg
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     urls = Urls()
     urls.show_current_valid_act_infos()
     # print(get_not_ams_act_desc("集卡"))
+    # print(search_ide_act("44_dOsCdP"))

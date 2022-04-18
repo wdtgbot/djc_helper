@@ -1,37 +1,64 @@
 default_language_version:
   python: python3
+exclude: |
+  (?x)
+      # 源码目录
+      ^(lanzou|test)/|
+      # 其他目录
+      ^(.cached|.db|.mypy_cache|.pytest_cache|.venv|.venv_dev|.tox|logs|releases)/|
+      # 源码文件
+      ^(reversi.py|qt_collapsible_box.py|utils/notices.txt)$
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.0.1
-    hooks:
-      - id: check-ast
-      - id: check-builtin-literals
-      - id: check-docstring-first
-      - id: check-merge-conflict
-      - id: check-yaml
-      - id: check-toml
-      - id: debug-statements
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v2.25.0
-    hooks:
-      - id: pyupgrade
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.9.3
-    hooks:
-      - id: isort
-  - repo: https://github.com/psf/black
-    rev: 21.8b0
-    hooks:
-      - id: black
-        args:
-          - --safe
-        language_version: python3.8
   - repo: https://github.com/PyCQA/flake8
-    rev: 3.9.2
+    rev: 4.0.1
     hooks:
       - id: flake8
-        additional_dependencies:
-          - flake8-bugbear == 20.11.1
         language_version: python3.8
+        additional_dependencies:
+          - flake8-typing-imports==1.9.0
+          - flake8-bugbear == 20.11.1
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.10.1
+    hooks:
+      - id: isort
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v2.32.0
+    hooks:
+      - id: pyupgrade
+        args: [ --py38-plus ]
+  - repo: https://github.com/psf/black
+    rev: 22.3.0
+    hooks:
+      - id: black
+        args: [ --safe, --quiet, --line-length=120 ]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.2.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: fix-encoding-pragma
+        args: [ --remove ]
+      - id: check-yaml
+      - id: debug-statements
+        language_version: python3
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.9.0
+    hooks:
+      - id: python-use-type-annotations
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v0.942
+    hooks:
+      - id: mypy
+        args: [ ]
+        additional_dependencies:
+          - iniconfig>=1.1.0
+          - py>=1.8.2
+          - attrs>=19.2.0
+          - packaging
+          - tomli
+          - types-atomicwrites
+          - types-pkg_resources
+          - types-requests
+          - types-toml
+#          - types-selenium # 由于只适配v3，而目前使用的是v4，所以禁用这个
+          - types-psutil

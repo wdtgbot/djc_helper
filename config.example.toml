@@ -42,7 +42,7 @@ http_timeout = 10
 log_level = "info"
 # 日志目录最大允许大小（单位为MiB），当超出该大小时将进行清理
 self.max_logs_size = 1024
-# 日志目录保留大小（单位为Mib），每次清理时将按时间顺序清理日志，直至剩余日志大小不超过该值
+# 日志目录保留大小（单位为MiB），每次清理时将按时间顺序清理日志，直至剩余日志大小不超过该值
 self.keep_logs_size = 512
 
 # 是否在程序启动时手动检查更新
@@ -86,6 +86,9 @@ cost_all_cards_and_do_lottery_on_last_day = false
 #   想要其他账号赠送卡片给3个QQ 123456和654321和111111
 #   auto_send_card_target_qqs = ["123456", "654321", "111111"]
 auto_send_card_target_qqs = []
+
+# 集卡赠送次数耗尽后，是否尝试通过索取的方式来赠送卡片
+enable_send_card_by_request = true
 
 # 赛利亚活动拜访目标QQ列表
 # 依次拜访给一到三个QQ的示例如下，更多拜访目标则类推
@@ -372,7 +375,7 @@ get_dnf_female_mage_awaken = true
 get_dnf_rank = true
 # 是否领取dnf助手编年史活动，额外需要助手userId
 get_dnf_helper_chronicle = true
-# 是否启用hello语音奖励兑换功能，额外需要hello语音的用户ID
+# 是否启用hello语音（皮皮蟹）奖励兑换功能，额外需要hello语音（皮皮蟹）的用户ID
 get_hello_voice = true
 # 是否领取2020DNF嘉年华页面主页面签到活动
 get_dnf_carnival = true
@@ -428,12 +431,14 @@ get_dnf_comic = true
 get_dnf_13 = true
 # 是否领取 我的dnf13周年活动 活动
 get_dnf_my_story = true
-# 是否领取 刃影预约活动 活动
+# 是否领取 新职业预约活动 活动
 get_dnf_reserve = true
 # 是否领取 DNF周年庆登录活动 活动
 get_dnf_anniversary = true
 # 是否领取 KOL 活动
 get_dnf_kol = true
+# 是否领取 冒险的起点 活动
+get_maoxian_start = true
 # 是否领取 勇士的冒险补给 活动
 get_maoxian = true
 # 是否领取 小酱油周礼包和生日礼包 活动
@@ -450,6 +455,12 @@ get_dnf_guanhuai = true
 get_dnf_relax_road = true
 # 是否领取 虎牙 活动
 get_huya = true
+# 是否领取 DNF名人堂 活动
+get_dnf_vote = true
+# 是否领取 WeGame活动_新版 活动
+get_wegame_new = true
+# 是否领取 魔界人探险记 活动
+get_mojieren = true
 
 # ------------ QQ空间pskey（需要登录 QQ空间 获取） ------------
 # 是否启用 集卡 功能
@@ -637,8 +648,8 @@ get_guanjia = true
 ## --------------- 充值权益（勇士币兑换） --------------------
 ## ++++++++++普通兑换专场（特邀会员以及心悦会员可兑换）++++++++++++
 #[[account_configs.xinyue_operations]]
-#iFlowId = "747718"
-#sFlowName = "复活币*1(日限100)(需1点勇士币)"
+#iFlowId = "821281"
+#sFlowName = "新版复活币*1(日限100)(需1点勇士币)"
 #count = 1
 #
 #[[account_configs.xinyue_operations]]
@@ -717,13 +728,15 @@ get_guanjia = true
 
 ## 心悦app相关操作
 #[[account_configs.xinyue_app_operations]]
-## 加密http请求体获取方式：抓包获取http body。如fiddler，抓包，找到对应请求（body大小为150的请求），右侧点Inspector/HexView，选中Http Body部分的字节码（未标蓝部分），右击Copy/Copy as 0x##，然后粘贴出来，将其中的bytes复制到下列对应数组位置
+## 加密http请求体获取方式：抓包获取http body。如fiddler，抓包，找到对应请求（body列为150或149的请求），右侧点Inspector/HexView，选中Http Body部分的字节码（未标蓝部分），右击Copy/Copy as 0x##，然后粘贴出来，将其中的bytes复制到下列对应数组位置
 ##      形如 0x58, 0x59, 0x01, 0x00 ...
-## 也可以使用小黄鸟HttpCanary来抓包，找到对应请求（body大小为150的请求），分享请求内容到电脑，然后下载后拖到HxD（另外下载）中查看，从后往前找，从右侧文本区显示为XY..，左侧十六进制区域为58 59 01 00的那个地方开始选择（也就是58 59为起点），一直选择到末尾，然后复制
+##
+## 如果fiddler无法抓取到请求包，也可以使用小黄鸟HttpCanary来抓包，找到对应请求（response的content-length为150或149的请求），分享请求内容到电脑，然后下载后拖到HxD（另外下载）中查看，从后往前找，从右侧文本区显示为XY..，左侧十六进制区域为58 59 01 00的那个地方开始选择（也就是58 59为起点），一直选择到末尾，然后复制
 ##      形如 58 59 01 00
-##  小黄鸟分享的请求文件，也可以使用vscode的hexdump插件来复制相关内容。打开vscode，安装hexdump插件，然后把下载的请求文件拖到vscode中，ctrl+shift+p呼出命令面板，输入hexdump，即可看到十六进制视图。跟上面的步骤一样，从58 59 01 00（XY..)那个地方一直选择到最后，然后右键选择  Copy the selection in a specific format，选择 C 的格式，然后把复制出来的内容中 { 到 } 之间的0x58, 0x59, 这些复制到下面的数组区域
+##   小黄鸟分享的请求文件，也可以使用vscode的hexdump插件来复制相关内容。打开vscode，安装hexdump插件，然后把下载的请求文件拖到vscode中，ctrl+shift+p呼出命令面板，输入hexdump，即可看到十六进制视图。
+##   跟上面的步骤一样，从58 59 01 00（XY..)那个地方一直选择到最后，然后右键选择  Copy the selection in a specific format，选择 C 的格式，然后把复制出来的内容中 { 到 } 之间的0x58, 0x59, 这些复制到下面的数组区域
 ##      形如 0x58, 0x59, 0x01, 0x00, 0x00, 0x01, 0x5d, 0x0a,
-##	        0x01, 0x02, 0x97, 0x10, 0x02, 0x3d, 0x00, 0x00,
+##       0x01, 0x02, 0x97, 0x10, 0x02, 0x3d, 0x00, 0x00,
 ## 也就是说，下面两种格式都支持
 ## encrypted_raw_http_body = [0x58, 0x59, 0x01, 0x00]
 ## encrypted_raw_http_body = "58 59 01 00"
@@ -785,6 +798,10 @@ show_color = ""
 10001 = false
 # 2021.11.18 史诗之路再次来袭
 10002 = false
+# 2021.12.16 向着希望前进 集DNF2021嘉年华卡片拼图，抽克隆天空
+10003 = false
+# 2022.01.19 新春新气象 虎啸阿拉德 新春集雪人卡片，追忆天空欢乐送！
+10004 = false
 
 # 会员关怀相关配置
 [account_configs.vip_mentor]
@@ -876,6 +893,13 @@ pNickName = ""
 # 搭档的userId，填写后将尝试自动绑定
 pUserId = ""
 
+# 是否启用自动匹配编年史搭档功能
+# 需要满足以下条件才会实际生效
+#   1. 在按月付费期间
+#   2. 开启了本开关
+#   4. 上个月达到了30级
+enable_auto_match_dnf_chronicle = false
+
 # dnf助手编年史是否开启抽奖
 chronicle_lottery = false
 
@@ -919,10 +943,10 @@ chronicle_lottery = false
 ## 表示领取几次这个奖励
 #count = 1
 
-# hello语音相关信息
+# hello语音（皮皮蟹）相关信息
 [account_configs.hello_voice]
-# hello语音的用户ID
-# 获取方式：打开hello语音，点击右下角【我的】tab，在最上方头像框的右侧，昵称下方，有形如【ID：XXXXXX】的字样，其中ID后面这串数字就是用户ID
+# hello语音（皮皮蟹）的用户ID
+# 获取方式：打开hello语音（皮皮蟹），点击右下角【我的】tab，在最上方头像框的右侧，昵称下方，有形如【ID：XXXXXX】的字样，其中ID后面这串数字就是用户ID
 hello_id = ""
 
 # 燃放爆竹相关配置

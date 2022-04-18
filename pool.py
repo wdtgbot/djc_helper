@@ -4,7 +4,7 @@ from typing import Optional
 
 from log import color, logger
 
-pool = None  # type: Optional[TPool]
+pool: Optional[TPool] = None
 
 
 def init_pool(pool_size):
@@ -28,7 +28,7 @@ def get_pool() -> Optional[TPool]:
     return pool
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print(get_pool())
 
     init_pool(8)

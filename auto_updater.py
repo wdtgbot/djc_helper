@@ -1,4 +1,4 @@
-# 更新器不启用文件日志
+from config import CommonConfig
 from log import color, fileHandler, logger, new_file_handler
 from version import now_version
 
@@ -12,17 +12,26 @@ import subprocess
 from distutils import dir_util
 
 from compress import decompress_dir_with_bandizip
-from update import need_update
+from download import download_latest_github_release
+from update import get_latest_version_from_github, need_update
 from upload_lanzouyun import Uploader
-from util import (bypass_proxy, change_title, exists_flag_file, kill_process,
-                  pause_and_exit, show_unexpected_exception_message,
-                  start_djc_helper)
+from usage_count import increase_counter
+from util import (
+    bypass_proxy,
+    change_title,
+    exists_flag_file,
+    kill_process,
+    pause_and_exit,
+    show_unexpected_exception_message,
+    start_djc_helper,
+)
 
-bandizip_executable_path = "./utils/bandizip_portable/bz.exe"
 tmp_dir = "_update_temp_dir"
 
 # note: 作为cwd的默认值，用于检测是否直接双击自动更新工具
 invalid_cwd = "./invalid_cwd"
+
+TEST_MODE = False
 
 
 # 自动更新的基本原型，日后想要加这个逻辑的时候再细化接入
@@ -45,12 +54,12 @@ def auto_update():
 
     if not exists_flag_file(".use_proxy"):
         bypass_proxy()
-        logger.info(f"当前已默认无视系统代理（VPN），如果需要dlc使用代理，请在小助手目录创建 .use_proxy 目录或文件")
+        logger.info("当前已默认无视系统代理（VPN），如果需要dlc使用代理，请在小助手目录创建 .use_proxy 目录或文件")
 
     uploader = Uploader()
 
     # 进行实际的检查是否需要更新操作
-    latest_version = uploader.latest_version()
+    latest_version = get_latest_version(uploader)
     logger.info(f"当前版本为{args.version}，网盘最新版本为{latest_version}")
 
     if need_update(args.version, latest_version):
@@ -71,6 +80,17 @@ def parse_args():
     return args
 
 
+def get_latest_version(uploader: Uploader) -> str:
+    try:
+        # 默认从网盘获取最新版本
+        logger.debug("尝试使用蓝奏云获取版本号")
+        return uploader.latest_version()
+    except Exception:
+        # 尝试从github获取版本信息
+        cfg = CommonConfig()
+        return get_latest_version_from_github(cfg)
+
+
 def update(args, uploader):
     logger.info("需要更新，开始更新流程")
 
@@ -79,13 +99,16 @@ def update(args, uploader):
         patches_range = uploader.latest_patches_range()
         logger.info(f"当前可以应用增量补丁更新的版本范围为{patches_range}")
 
-        can_use_patch = not need_update(args.version, patches_range[0]) and not need_update(patches_range[1], args.version)
+        can_use_patch = not need_update(args.version, patches_range[0]) and not need_update(
+            patches_range[1], args.version
+        )
         if can_use_patch:
             logger.info(color("bold_yellow") + "当前版本可使用增量补丁，尝试进行增量更新")
 
             update_ok = incremental_update(args, uploader)
             if update_ok:
                 logger.info("增量更新完毕")
+                report_dlc_usage("incremental update")
                 return
             else:
                 logger.warning("增量更新失败，尝试默认的全量更新方案")
@@ -103,12 +126,23 @@ def full_update(args, uploader):
     remove_temp_dir("更新前，先移除临时目录，避免更新失败时这个目录会越来越大")
 
     logger.info("开始下载最新版本的压缩包")
-    filepath = uploader.download_latest_version(tmp_dir)
+    filepath: str
+    try:
+        filepath = uploader.download_latest_version(tmp_dir)
+        report_dlc_usage("full_update_from_netdisk")
+    except Exception as e:
+        logger.error(f"从蓝奏云下载最新版本失败，将尝试从github及其镜像下载最新版本, exc={e}")
+        logger.debug("", exc_info=e)
+
+        filepath = download_latest_github_release(tmp_dir)
+        report_dlc_usage("full_update_from_github")
 
     logger.info("下载完毕，开始解压缩")
     decompress(filepath, tmp_dir)
 
-    target_dir = filepath.replace('.7z', '')
+    # 计算解压后的目录的路径
+    target_dir = extract_decompressed_directory_name(filepath)
+
     logger.info("预处理解压缩文件：移除部分文件")
     for file in ["config.toml", "utils/auto_updater.exe"]:
         file_to_remove = os.path.realpath(os.path.join(target_dir, file))
@@ -121,11 +155,32 @@ def full_update(args, uploader):
     kill_original_process(args.pid)
 
     logger.info("进行更新操作...")
-    dir_util.copy_tree(target_dir, ".")
+    if not TEST_MODE:
+        dir_util.copy_tree(target_dir, ".")
+    else:
+        logger.warning(f"当前为测试模式，将不会实际覆盖 {target_dir} 到当前目录")
 
     remove_temp_dir("更新完毕，移除临时目录")
 
     return True
+
+
+def extract_decompressed_directory_name(filepath: str) -> str:
+    # 手动打包的压缩包，去除.7z后缀后，就是对应的目录名称
+    target_dir = filepath.replace(".7z", "")
+
+    if not os.path.isdir(target_dir):
+        # 兼容下从github下载的压缩包，压缩包名称固定为 xxx.7z，自动解压后 其名称为 实际的名称
+        # 这里假设该目录中仅有这两个文件和目录，在更新器目前的设定下是符合的
+        root_dir = os.path.dirname(filepath)
+        for entry in os.listdir(root_dir):
+            entry_full_path = os.path.join(root_dir, entry)
+
+            if os.path.isdir(entry_full_path):
+                target_dir = entry_full_path
+                break
+
+    return target_dir
 
 
 def incremental_update(args, uploader):
@@ -139,22 +194,27 @@ def incremental_update(args, uploader):
 
     kill_original_process(args.pid)
 
-    target_dir = filepath.replace('.7z', '')
+    target_dir = filepath.replace(".7z", "")
     target_patch = os.path.join(target_dir, f"{args.version}.patch")
     logger.info(f"开始应用补丁 {target_patch}")
-    # hpatchz.exe -C-diff -f . "%target_patch_file%" .
-    ret_code = subprocess.call([
-        os.path.realpath("utils/hpatchz.exe"),
-        "-C-diff",
-        "-f",
-        os.path.realpath("."),
-        os.path.realpath(target_patch),
-        os.path.realpath("."),
-    ])
+    if not TEST_MODE:
+        # hpatchz.exe -C-diff -f . "%target_patch_file%" .
+        ret_code = subprocess.call(
+            [
+                os.path.realpath("utils/hpatchz.exe"),
+                "-C-diff",
+                "-f",
+                os.path.realpath("."),
+                os.path.realpath(target_patch),
+                os.path.realpath("."),
+            ]
+        )
 
-    if ret_code != 0:
-        logger.error(f"增量更新失败，错误码为{ret_code}，具体报错请看上面日志")
-        return False
+        if ret_code != 0:
+            logger.error(f"增量更新失败，错误码为{ret_code}，具体报错请看上面日志")
+            return False
+    else:
+        logger.warning(f"当前为测试模式，将不会实际应用补丁 {target_patch}")
 
     remove_temp_dir("更新完毕，移除临时目录")
 
@@ -182,18 +242,57 @@ def start_new_version(args):
     start_djc_helper(target_exe)
 
     logger.info("退出配置工具")
+    report_dlc_usage("end_by_start_new_version")
     kill_process(os.getpid())
 
 
-if __name__ == '__main__':
+def main():
     try:
+        report_dlc_usage("start")
+
         os.system("title 自动更新工具")
         auto_update()
+
+        report_dlc_usage("end_without_update")
     except Exception as e:
+        report_dlc_usage("exception")
         show_unexpected_exception_message(e)
 
-        logger.info("完整截图反馈后点击任意键继续流程，谢谢合作~")
+        logger.info("完整截图反馈后点击任意键继续流程，谢谢合作~（当前版本的本体可以照常使用）")
         pause_and_exit(1)
+
+
+def report_dlc_usage(ctx: str):
+    increase_counter(ga_category="use_auto_updater", name=ctx)
+
+
+def test():
+    global TEST_MODE
+    TEST_MODE = True
+
+    logger.info(color("bold_yellow") + "开始测试更新器功能（不会实际覆盖文件）")
+
+    args = parse_args()
+    uploader = Uploader()
+
+    # 进行实际的检查是否需要更新操作
+    latest_version = get_latest_version(uploader)
+    logger.info(f"当前版本为{args.version}，网盘最新版本为{latest_version}")
+
+    if need_update(args.version, latest_version):
+        update(args, uploader)
+        start_new_version(args)
+    else:
+        logger.info("已经是最新版本，不需要更新")
+
+
+if __name__ == "__main__":
+    TEST = False
+
+    if not TEST:
+        main()
+    else:
+        test()
 
 # 示例用法
 # import subprocess

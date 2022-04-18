@@ -33,19 +33,19 @@ class ArkLotteryGameInfo(ConfigInterface):
 
 class ArkLotteryCardGroups(ConfigInterface):
     def __init__(self):
-        self.group1 = ArkLotteryCardGroup()  # type: ArkLotteryCardGroup
-        self.group2 = ArkLotteryCardGroup()  # type: ArkLotteryCardGroup
-        self.group3 = ArkLotteryCardGroup()  # type: ArkLotteryCardGroup
+        self.group1: ArkLotteryCardGroup = ArkLotteryCardGroup()
+        self.group2: ArkLotteryCardGroup = ArkLotteryCardGroup()
+        self.group3: ArkLotteryCardGroup = ArkLotteryCardGroup()
 
 
 class ArkLotteryCardGroup(ConfigInterface):
     def __init__(self):
         self.title = "全民竞速"
-        self.cardList = []  # type: List[ArkLotteryCard]
+        self.cardList: List[ArkLotteryCard] = []
 
     def fields_to_fill(self):
         return [
-            ('cardList', ArkLotteryCard),
+            ("cardList", ArkLotteryCard),
         ]
 
 
@@ -60,10 +60,10 @@ class ArkLotteryCard(ConfigInterface):
 
 class ArkLotteryPrizeGroups(ConfigInterface):
     def __init__(self):
-        self.group1 = ArkLotteryPrizeGroup()  # type: ArkLotteryPrizeGroup
-        self.group2 = ArkLotteryPrizeGroup()  # type: ArkLotteryPrizeGroup
-        self.group3 = ArkLotteryPrizeGroup()  # type: ArkLotteryPrizeGroup
-        self.group4 = ArkLotteryPrizeGroup()  # type: ArkLotteryPrizeGroup
+        self.group1: ArkLotteryPrizeGroup = ArkLotteryPrizeGroup()
+        self.group2: ArkLotteryPrizeGroup = ArkLotteryPrizeGroup()
+        self.group3: ArkLotteryPrizeGroup = ArkLotteryPrizeGroup()
+        self.group4: ArkLotteryPrizeGroup = ArkLotteryPrizeGroup()
 
 
 class ArkLotteryPrizeGroup(ConfigInterface):
@@ -106,11 +106,11 @@ class DnfAreaServerListConfig(ConfigInterface):
     def __init__(self):
         self.t = "广东"
         self.v = "21"
-        self.opt_data_array = []  # type: List[DnfServerConfig]
+        self.opt_data_array: List[DnfServerConfig] = []
 
     def fields_to_fill(self):
         return [
-            ('opt_data_array', DnfServerConfig),
+            ("opt_data_array", DnfServerConfig),
         ]
 
 

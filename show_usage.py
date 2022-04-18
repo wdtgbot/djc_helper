@@ -1,5 +1,7 @@
-from usage_count import *
-from util import *
+from log import color, logger
+from usage_count import get_count, get_record_count_name_start_with, time_periods, time_periods_desc
+from util import get_last_n_days, get_uuid, show_head_line, tableify
+from version import now_version, ver_time
 
 user_usage_counter_name_prefix = "user_count"
 auto_updater_usage_counter_name_prefix = "auto_updater"
@@ -29,9 +31,21 @@ def show_usage():
         # ["当前版本总计使用数", *[get_count(this_version_global_usage_counter_name, period) for period in extra_time_periods]],
         # ["所有版本总计使用数", *[get_count(global_usage_counter_name, period) for period in extra_time_periods]],
         # ["当前版本活跃用户数", *[get_record_count_name_start_with(this_version_user_usage_prefix, period) for period in extra_time_periods]],
-        ["活跃用户数", *[get_record_count_name_start_with(user_usage_counter_name_prefix, period) for period in extra_time_periods]],
+        [
+            "活跃用户数",
+            *[
+                get_record_count_name_start_with(user_usage_counter_name_prefix, period)
+                for period in extra_time_periods
+            ],
+        ],
         # ["DLC用户数", *[get_record_count_name_start_with(auto_updater_usage_counter_name_prefix, period) for period in extra_time_periods]],
-        ["按月付费用户数", *[get_record_count_name_start_with(active_monthly_pay_user_usage_counter_name_prefix, period) for period in extra_time_periods]],
+        [
+            "按月付费用户数",
+            *[
+                get_record_count_name_start_with(active_monthly_pay_user_usage_counter_name_prefix, period)
+                for period in extra_time_periods
+            ],
+        ],
     ]
 
     logger.info(tableify(heads, colSizes))
@@ -39,7 +53,11 @@ def show_usage():
         logger.info(color("fg_bold_cyan") + tableify(row, colSizes))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    import os
+
+    from util import change_console_window_mode_async
+
     change_console_window_mode_async()
     show_usage()
     os.system("PAUSE")

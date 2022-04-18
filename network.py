@@ -1,22 +1,30 @@
+import json
+import time
+import traceback
+from typing import Callable, Dict, Optional
 from urllib.parse import unquote_plus
 
 import requests
 
-from config import *
+from config import CommonConfig, RetryConfig
+from const import appVersion
 from dao import ResponseInfo
-from log import logger
+from log import color, logger
+from util import check_some_exception, get_meaningful_call_point_for_log
 
 jsonp_callback_flag = "jsonp_callback"
 
 
 class Network:
     def __init__(self, sDeviceID, uin, skey, common_cfg):
-        self.common_cfg = common_cfg  # type: CommonConfig
+        self.common_cfg: CommonConfig = common_cfg
 
-        self.base_cookies = "djc_appSource=android; djc_appVersion={djc_appVersion}; acctype=; uin={uin}; skey={skey};".format(
-            djc_appVersion=appVersion,
-            uin=uin,
-            skey=skey,
+        self.base_cookies = (
+            "djc_appSource=android; djc_appVersion={djc_appVersion}; acctype=; uin={uin}; skey={skey};".format(
+                djc_appVersion=appVersion,
+                uin=uin,
+                skey=skey,
+            )
         )
 
         self.base_headers = {
@@ -31,52 +39,98 @@ class Network:
             "Cookie": self.base_cookies,
         }
 
-    def get(self, ctx, url, pretty=False, print_res=True, is_jsonp=False, is_normal_jsonp=False, need_unquote=True, extra_cookies="", check_fn: Callable[[requests.Response], Optional[Exception]] = None,
-            extra_headers: Optional[Dict[str, str]] = None) -> dict:
-        def request_fn() -> requests.Response:
-            cookies = self.base_cookies + extra_cookies
-            get_headers = {**self.base_headers, **{
+    def get(
+        self,
+        ctx,
+        url,
+        pretty=False,
+        print_res=True,
+        is_jsonp=False,
+        is_normal_jsonp=False,
+        need_unquote=True,
+        extra_cookies="",
+        check_fn: Callable[[requests.Response], Optional[Exception]] = None,
+        extra_headers: Optional[Dict[str, str]] = None,
+    ) -> dict:
+
+        cookies = self.base_cookies + extra_cookies
+        get_headers = {
+            **self.base_headers,
+            **{
                 "Cookie": cookies,
-            }}
-            if extra_headers is not None:
-                get_headers = {**get_headers, **extra_headers}
+            },
+        }
+        if extra_headers is not None:
+            get_headers = {**get_headers, **extra_headers}
+
+        def request_fn() -> requests.Response:
             return requests.get(url, headers=get_headers, timeout=self.common_cfg.http_timeout)
 
         res = try_request(request_fn, self.common_cfg.retry, check_fn)
+
+        logger.debug(f"{ctx} cookies = {cookies}")
+
         return process_result(ctx, res, pretty, print_res, is_jsonp, is_normal_jsonp, need_unquote)
 
-    def post(self, ctx, url, data=None, json=None, pretty=False, print_res=True, is_jsonp=False, is_normal_jsonp=False, need_unquote=True, extra_cookies="", check_fn: Callable[[requests.Response], Optional[Exception]] = None,
-             extra_headers: Optional[Dict[str, str]] = None, disable_retry=False) -> dict:
-        def request_fn() -> requests.Response:
-            cookies = self.base_cookies + extra_cookies
-            content_type = "application/x-www-form-urlencoded"
-            if data is None and json is not None:
-                content_type = "application/json"
+    def post(
+        self,
+        ctx,
+        url,
+        data=None,
+        json=None,
+        pretty=False,
+        print_res=True,
+        is_jsonp=False,
+        is_normal_jsonp=False,
+        need_unquote=True,
+        extra_cookies="",
+        check_fn: Callable[[requests.Response], Optional[Exception]] = None,
+        extra_headers: Optional[Dict[str, str]] = None,
+        disable_retry=False,
+    ) -> dict:
 
-            post_headers = {**self.base_headers, **{
+        cookies = self.base_cookies + extra_cookies
+        content_type = "application/x-www-form-urlencoded"
+        if data is None and json is not None:
+            content_type = "application/json"
+
+        post_headers = {
+            **self.base_headers,
+            **{
                 "Content-Type": content_type,
                 "Cookie": cookies,
-            }}
-            if extra_headers is not None:
-                post_headers = {**post_headers, **extra_headers}
+            },
+        }
+        if extra_headers is not None:
+            post_headers = {**post_headers, **extra_headers}
+
+        def request_fn() -> requests.Response:
             return requests.post(url, data=data, json=json, headers=post_headers, timeout=self.common_cfg.http_timeout)
 
         if not disable_retry:
             res = try_request(request_fn, self.common_cfg.retry, check_fn)
         else:
             res = request_fn()
-        logger.debug(f"{data}")
+
+        logger.debug(f"{ctx} data = {data}")
+        logger.debug(f"{ctx} json = {json}")
+        logger.debug(f"{ctx} cookies = {cookies}")
+
         return process_result(ctx, res, pretty, print_res, is_jsonp, is_normal_jsonp, need_unquote)
 
 
-def try_request(request_fn: Callable[[], requests.Response], retryCfg: RetryConfig, check_fn: Callable[[requests.Response], Optional[Exception]] = None) -> Optional[requests.Response]:
+def try_request(
+    request_fn: Callable[[], requests.Response],
+    retryCfg: RetryConfig,
+    check_fn: Callable[[requests.Response], Optional[Exception]] = None,
+) -> Optional[requests.Response]:
     """
     :param check_fn: func(requests.Response) -> bool
     :type retryCfg: RetryConfig
     """
     for i in range(retryCfg.max_retry_count):
         try:
-            response = request_fn()  # type: requests.Response
+            response: requests.Response = request_fn()
             fix_encoding(response)
 
             if check_fn is not None:
@@ -86,25 +140,30 @@ def try_request(request_fn: Callable[[], requests.Response], retryCfg: RetryConf
 
             return response
         except Exception as exc:
-            def get_log_func(log_func):
+
+            def get_log_func(exc, log_func):
                 if str(exc) == "请求过快":
                     return logger.debug
                 else:
                     return log_func
 
             extra_info = check_some_exception(exc)
-            get_log_func(logger.exception)("request failed, detail as below:" + extra_info, exc_info=exc)
-            stack_info = color("bold_black") + ''.join(traceback.format_stack())
-            get_log_func(logger.error)(f"full call stack=\n{stack_info}")
-            get_log_func(logger.warning)(color("thin_yellow") + f"{i + 1}/{retryCfg.max_retry_count}: request failed, wait {retryCfg.retry_wait_time}s。异常补充说明如下：{extra_info}")
+            get_log_func(exc, logger.exception)("request failed, detail as below:" + extra_info, exc_info=exc)
+            stack_info = color("bold_black") + "".join(traceback.format_stack())
+            get_log_func(exc, logger.error)(f"full call stack=\n{stack_info}")
+            get_log_func(exc, logger.warning)(
+                color("thin_yellow")
+                + f"{i + 1}/{retryCfg.max_retry_count}: request failed, wait {retryCfg.retry_wait_time}s。异常补充说明如下：{extra_info}"
+            )
             if i + 1 != retryCfg.max_retry_count:
                 time.sleep(retryCfg.retry_wait_time)
 
     logger.error(f"重试{retryCfg.max_retry_count}次后仍失败")
+    return None
 
 
 # 每次处理完备份一次最后的报错，方便出错时打印出来~
-last_response_info = None  # type: Optional[ResponseInfo]
+last_response_info: Optional[ResponseInfo] = None
 
 
 def set_last_response_info(status_code: int, reason: str, text: str):
@@ -115,7 +174,12 @@ def set_last_response_info(status_code: int, reason: str, text: str):
     last_response_info.text = text
 
 
-def process_result(ctx, res, pretty=False, print_res=True, is_jsonp=False, is_normal_jsonp=False, need_unquote=True) -> dict:
+last_process_result: Optional[dict] = None
+
+
+def process_result(
+    ctx, res, pretty=False, print_res=True, is_jsonp=False, is_normal_jsonp=False, need_unquote=True
+) -> dict:
     fix_encoding(res)
 
     if res is not None:
@@ -154,36 +218,36 @@ def process_result(ctx, res, pretty=False, print_res=True, is_jsonp=False, is_no
 
 
 def fix_encoding(res: requests.Response):
-    if res.encoding not in ['gbk']:
+    if res.encoding not in ["gbk"]:
         # 某些特殊编码不要转，否则会显示乱码
-        res.encoding = 'utf-8'
+        res.encoding = "utf-8"
 
 
 def pre_process_data(data) -> Optional[dict]:
     # 特殊处理一些数据
     if type(data) is dict:
-        if 'frame_resp' in data and 'data' in data:
+        if "frame_resp" in data and "data" in data:
             # QQ视频活动的回包太杂，重新取特定数据
             new_data = {}
-            new_data['msg'] = extract_qq_video_message(data)
-            new_data['code'] = data['data'].get('sys_code', data['ret'])
-            new_data['prize_id'] = data['data'].get('prize_id', "0")
+            new_data["msg"] = extract_qq_video_message(data)
+            new_data["code"] = data["data"].get("sys_code", data["ret"])
+            new_data["prize_id"] = data["data"].get("prize_id", "0")
             return new_data
 
     return None
 
 
 def extract_qq_video_message(res) -> str:
-    data = res['data']
+    data = res["data"]
 
     msg = ""
-    if 'lottery_txt' in data:
-        msg = data['lottery_txt']
-    elif 'wording_info' in data:
-        msg = data['wording_info']['custom_words']
+    if "lottery_txt" in data:
+        msg = data["lottery_txt"]
+    elif "wording_info" in data:
+        msg = data["wording_info"]["custom_words"]
 
-    if 'msg' in res:
-        msg += " | " + res['msg']
+    if "msg" in res:
+        msg += " | " + res["msg"]
 
     return msg
 
@@ -229,13 +293,13 @@ def jsonp2json(jsonpStr, is_normal_jsonp=True, need_unquote=True) -> dict:
     if is_normal_jsonp:
         left_idx = jsonpStr.index("(")
         right_idx = jsonpStr.rindex(")")
-        jsonpStr = jsonpStr[left_idx + 1:right_idx]
+        jsonpStr = jsonpStr[left_idx + 1 : right_idx]
         return json.loads(jsonpStr)
 
     # dnf返回的jsonp比较诡异，需要特殊处理
     left_idx = jsonpStr.index("{")
     right_idx = jsonpStr.rindex("}")
-    jsonpStr = jsonpStr[left_idx + 1:right_idx]
+    jsonpStr = jsonpStr[left_idx + 1 : right_idx]
 
     jsonRes = {}
     for kv in jsonpStr.split(","):
@@ -247,7 +311,7 @@ def jsonp2json(jsonpStr, is_normal_jsonp=True, need_unquote=True) -> dict:
                 jsonRes[k] = unquote_plus(v)
             else:
                 jsonRes[k] = v
-        except:
+        except Exception:
             pass
 
     return jsonRes

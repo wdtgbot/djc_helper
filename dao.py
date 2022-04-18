@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import List, Tuple, Type
 
 from data_struct import ConfigInterface, to_raw_type
 
@@ -96,7 +95,7 @@ class GoodsInfo(ConfigInterface):
         self.limitPerOrder = "1"
         self.totalLimit = "0"
         self.recommend = "80"
-        self.valiDate = []  # type: List[GoodsValiDateInfo]
+        self.valiDate: list[GoodsValiDateInfo] = []
         self.heroSkin = []
         self.related = False
         self.category = GoodsCategoryInfo()
@@ -105,7 +104,7 @@ class GoodsInfo(ConfigInterface):
 
     def fields_to_fill(self):
         return [
-            ('valiDate', GoodsValiDateInfo),
+            ("valiDate", GoodsValiDateInfo),
         ]
 
 
@@ -254,7 +253,15 @@ class XinYueInfo(DaoObject):
 
 
 class XinYueItemInfo(DaoObject):
-    def __init__(self, total_obtain_two_score, used_two_score, total_obtain_free_do, used_free_do, total_obtain_refresh, used_refresh):
+    def __init__(
+        self,
+        total_obtain_two_score,
+        used_two_score,
+        total_obtain_free_do,
+        used_free_do,
+        total_obtain_refresh,
+        used_refresh,
+    ):
         # 免做卡
         self.免做卡 = int(total_obtain_free_do) - int(used_free_do)
         # 双倍卡
@@ -283,7 +290,7 @@ class XinYueTeamInfo(ConfigInterface):
         self.result = 0
         self.id = ""
         self.award_summary = "大大小|小中大"
-        self.members = []  # type: List[XinYueTeamMember]
+        self.members: list[XinYueTeamMember] = []
 
     def is_team_full(self) -> bool:
         return len(self.members) == 2
@@ -341,7 +348,14 @@ class AmesvrUserBindInfo(ConfigInterface):
         self.FroleId = "71672841"
         self.FroleName = "%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%91%80"
         self.FroleLevel = "100"
-        self.Fcheckparam = "dnf|yes|1054073896|11|45168567*45230145*45481100*62889873*64327847*64327855*64333408*64333413*64349521*64349525*64370730*64370732*64632622*64632641*69837948*69837951*71672841*||||%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%96%B5*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%93%87*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87Meow*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%B8%80%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%BA%8C%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%B8%89%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E5%9B%9B%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%BA%94%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E5%85%AD%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%B8%83%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E5%85%AB%E5%8F%B7*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%96%B5%E5%96%B5*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%96%B5%E5%91%9C*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%B9%9D%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E5%8D%81%E5%8F%B7*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%91%80*|0*3*13*14*14*14*14*14*14*14*14*14*3*3*14*14*11*||1600743086|"
+        self.Fcheckparam = (
+            "dnf|yes|1054073896|11|45168567*45230145*45481100*62889873*64327847*64327855*64333408*64333413*64349521*64349525*64370730*64370732*64632622*64632641*69837948*69837951*71672841*||||%E9%A3%8E%E4%B9%8B%E5%87%8C%E6"
+            "%AE%87*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%96%B5*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%93%87*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87Meow*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%B8%80%E5%8F%B7*%E5%8D%A2%E5%8"
+            "5%8B%E5%A5%B6%E5%A6%88%E4%BA%8C%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%B8%89%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E5%9B%9B%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%BA%94%E5%8F%B7*%E5"
+            "%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E5%85%AD%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%B8%83%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E5%85%AB%E5%8F%B7*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%96%B5%E"
+            "5%96%B5*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87%E5%96%B5%E5%91%9C*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E4%B9%9D%E5%8F%B7*%E5%8D%A2%E5%85%8B%E5%A5%B6%E5%A6%88%E5%8D%81%E5%8F%B7*%E9%A3%8E%E4%B9%8B%E5%87%8C%E6%AE%87"
+            "%E5%91%80*|0*3*13*14*14*14*14*14*14*14*14*14*3*3*14*14*11*||1600743086|"
+        )
         self.Fmd5str = "FDAF0B1B1E51111CCC0AAD240317E96F"
         self.Fdate = "2020-09-22 10:51:29"
         self.FupdateDate = "2020-09-22 10:51:29"
@@ -351,15 +365,26 @@ class AmesvrUserBindInfo(ConfigInterface):
 
 class AmesvrQueryRole(ConfigInterface):
     def __init__(self):
-        self.version = 'V1.0.20201105.20201105101730'
-        self.retCode = '0'
-        self.serial_num = 'AMS-DNF-1220171837-4zFGHv-348623-5381'
-        self.data = '_idip_req_id_=&_webplat_msg=21|45168567 风之凌殇 0 100|45230145 风之凌殇喵 3 100|45481100 风之凌殇哇 13 100|62889873 风之凌殇Meow 14 100|64327847 卢克奶妈一号 14 100|64327855 卢克奶妈二号 14 100|64333408 卢克奶妈三号 14 100|64333413 卢克奶妈四号 14 100|64349521 卢克奶妈五号 14 100|64349525 卢克奶妈六号 14 100|64370730 卢克奶妈七号 14 100|64370732 卢克奶妈八号 14 100|64632622 风之凌殇喵喵 3 100|64632641 风之凌殇喵呜 3 100|69837948 卢克奶妈九号 14 100|69837951 卢克奶妈十号 14 100|71672841 风之凌殇呀 11 100|72282733 风之凌殇哦 4 100|72522431 风之凌殇咯 3 100|72574316 风之凌殇咩 3 100|72767454 风之凌殇嘿 3 100|&_webplat_msg_code=0&area=11&msg=21|45168567 风之凌殇 0 100|45230145 风之凌殇喵 3 100|45481100 风之凌殇哇 13 100|62889873 风之凌殇Meow 14 100|64327847 卢克奶妈一号 14 100|64327855 卢克奶妈二号 14 100|64333408 卢克奶妈三号 14 100|64333413 卢克奶妈四号 14 100|64349521 卢克奶妈五号 14 100|64349525 卢克奶妈六号 14 100|64370730 卢克奶妈七号 14 100|64370732 卢克奶妈八号 14 100|64632622 风之凌殇喵喵 3 100|64632641 风之凌殇喵呜 3 100|69837948 卢克奶妈九号 14 100|69837951 卢克奶妈十号 14 100|71672841 风之凌殇呀 11 100|72282733 风之凌殇哦 4 100|72522431 风之凌殇咯 3 100|72574316 风之凌殇咩 3 100|72767454 风之凌殇嘿 3 100|&result=0&uin=1054073896&'
-        self.msg = 'success'
-        self.checkparam = 'dnf|yes|1054073896|11|45168567*45230145*45481100*62889873*64327847*64327855*64333408*64333413*64349521*64349525*64370730*64370732*64632622*64632641*69837948*69837951*71672841*72282733*72522431*72574316*72767454*||||风之凌殇*风之凌殇喵*风之凌殇哇*风之凌殇Meow*卢克奶妈一号*卢克奶妈二号*卢克奶妈三号*卢克奶妈四号*卢克奶妈五号*卢克奶妈六号*卢克奶妈七号*卢克奶妈八号*风之凌殇喵喵*风之凌殇喵呜*卢克奶妈九号*卢克奶妈十号*风之凌殇呀*风之凌殇哦*风之凌殇咯*风之凌殇咩*风之凌殇嘿*|0*3*13*14*14*14*14*14*14*14*14*14*3*3*14*14*11*4*3*3*3*||1608455917|'
-        self.md5str = '3F7F5D5C92CF3E633A40E246A637CC0B'
-        self.infostr = ''
-        self.checkstr = ''
+        self.version = "V1.0.20201105.20201105101730"
+        self.retCode = "0"
+        self.serial_num = "AMS-DNF-1220171837-4zFGHv-348623-5381"
+        self.data = (
+            "_idip_req_id_=&_webplat_msg=21|45168567 风之凌殇 0 100|45230145 风之凌殇喵 3 100|45481100 风之凌殇哇 13 100|62889873 风之凌殇Meow 14 100|64327847 卢克奶妈一号 14 100|64327855 卢克奶妈二号 14 100|64333408 卢克奶妈三号 14 100"
+            "|64333413 卢克奶妈四号 14 100|64349521 卢克奶妈五号 14 100|64349525 卢克奶妈六号 14 100|64370730 卢克奶妈七号 14 100|64370732 卢克奶妈八号 14 100|64632622 风之凌殇喵喵 3 100|64632641 风之凌殇喵呜 3 100|69837948 卢克奶妈九号 1"
+            "4 100|69837951 卢克奶妈十号 14 100|71672841 风之凌殇呀 11 100|72282733 风之凌殇哦 4 100|72522431 风之凌殇咯 3 100|72574316 风之凌殇咩 3 100|72767454 风之凌殇嘿 3 100|&_webplat_msg_code=0&area=11&msg=21|45168567 风之凌殇 0 "
+            "100|45230145 风之凌殇喵 3 100|45481100 风之凌殇哇 13 100|62889873 风之凌殇Meow 14 100|64327847 卢克奶妈一号 14 100|64327855 卢克奶妈二号 14 100|64333408 卢克奶妈三号 14 100|64333413 卢克奶妈四号 14 100|64349521 卢克奶妈五号 "
+            "14 100|64349525 卢克奶妈六号 14 100|64370730 卢克奶妈七号 14 100|64370732 卢克奶妈八号 14 100|64632622 风之凌殇喵喵 3 100|64632641 风之凌殇喵呜 3 100|69837948 卢克奶妈九号 14 100|69837951 卢克奶妈十号 14 100|71672841 风之凌殇"
+            "呀 11 100|72282733 风之凌殇哦 4 100|72522431 风之凌殇咯 3 100|72574316 风之凌殇咩 3 100|72767454 风之凌殇嘿 3 100|&result=0&uin=1054073896&"
+        )
+        self.msg = "success"
+        self.checkparam = (
+            "dnf|yes|1054073896|11|45168567*45230145*45481100*62889873*64327847*64327855*64333408*64333413*64349521*64349525*64370730*64370732*64632622*64632641*69837948*69837951*71672841*72282733*72522431*72574316*72767454"
+            "*||||风之凌殇*风之凌殇喵*风之凌殇哇*风之凌殇Meow*卢克奶妈一号*卢克奶妈二号*卢克奶妈三号*卢克奶妈四号*卢克奶妈五号*卢克奶妈六号*卢克奶妈七号*卢克奶妈八号*风之凌殇喵喵*风之凌殇喵呜*卢克奶妈九号*卢克奶妈十号*风之凌殇呀*风之凌殇哦*风之"
+            "凌殇咯*风之凌殇咩*风之凌殇嘿*|0*3*13*14*14*14*14*14*14*14*14*14*3*3*14*14*11*4*3*3*3*||1608455917|"
+        )
+        self.md5str = "3F7F5D5C92CF3E633A40E246A637CC0B"
+        self.infostr = ""
+        self.checkstr = ""
 
 
 class RankUserInfo(ConfigInterface):
@@ -476,16 +501,8 @@ class DnfWarriorsCallZZBossRule(ConfigInterface):
 
 class DnfWarriorsCallBoss(ConfigInterface):
     def __init__(self):
-        self.left = {
-            "117925": 0,
-            "117926": 0,
-            "undefined": 0
-        }
-        self.used = {
-            "117925": 0,
-            "117926": 1,
-            "undefined": 0
-        }
+        self.left = {"117925": 0, "117926": 0, "undefined": 0}
+        self.used = {"117925": 0, "117926": 1, "undefined": 0}
 
 
 class QzoneActivityResponse(ConfigInterface):
@@ -502,14 +519,14 @@ class DnfHelperChronicleExchangeList(ConfigInterface):
     def __init__(self):
         self.code = 200
         self.exp = 0
-        self.gifts = []  # type: List[DnfHelperChronicleExchangeGiftInfo]
+        self.gifts: list[DnfHelperChronicleExchangeGiftInfo] = []
         self.hasPartner = False
         self.level = 1
         self.msg = "success"
 
     def fields_to_fill(self):
         return [
-            ('gifts', DnfHelperChronicleExchangeGiftInfo),
+            ("gifts", DnfHelperChronicleExchangeGiftInfo),
         ]
 
 
@@ -528,16 +545,16 @@ class DnfHelperChronicleExchangeGiftInfo(ConfigInterface):
 
 class DnfHelperChronicleBasicAwardList(ConfigInterface):
     def __init__(self):
-        self.basic1List = []  # type: List[DnfHelperChronicleBasicAwardInfo]
-        self.basic2List = []  # type: List[DnfHelperChronicleBasicAwardInfo]
+        self.basic1List: list[DnfHelperChronicleBasicAwardInfo] = []
+        self.basic2List: list[DnfHelperChronicleBasicAwardInfo] = []
         self.code = 200
         self.hasPartner = False
         self.msg = "success"
 
     def fields_to_fill(self):
         return [
-            ('basic1List', DnfHelperChronicleBasicAwardInfo),
-            ('basic2List', DnfHelperChronicleBasicAwardInfo),
+            ("basic1List", DnfHelperChronicleBasicAwardInfo),
+            ("basic2List", DnfHelperChronicleBasicAwardInfo),
         ]
 
 
@@ -557,12 +574,12 @@ class DnfHelperChronicleBasicAwardInfo(ConfigInterface):
 class DnfHelperChronicleLotteryList(ConfigInterface):
     def __init__(self):
         self.code = 200
-        self.gifts = []  # type: List[DnfHelperChronicleLotteryGiftInfo]
+        self.gifts: list[DnfHelperChronicleLotteryGiftInfo] = []
         self.msg = "success"
 
     def fields_to_fill(self):
         return [
-            ('gifts', DnfHelperChronicleLotteryGiftInfo),
+            ("gifts", DnfHelperChronicleLotteryGiftInfo),
         ]
 
 
@@ -592,7 +609,7 @@ class DnfHelperChronicleUserActivityTopInfo(ConfigInterface):
         self.levelExp = 5
         self.giftImage = "https://mcdn.gtimg.com/bbcdn/dnf/Scorereward/sLbPic2/icons/202011262233235fbfbcb30af65.png"
 
-    def get_level_info_and_points_to_show(self) -> Tuple[str, str]:
+    def get_level_info_and_points_to_show(self) -> tuple[str, str]:
         levelInfo = f"LV{self.level}({self.currentExp}/{self.levelExp})"
         chronicle_points = self.point
         if self.totalExp == 0:
@@ -611,11 +628,11 @@ class DnfHelperChronicleUserTaskList(ConfigInterface):
         self.mIcon = "http://q.qlogo.cn/qqapp/1104466820/0E82A1DBAE746043CF3AEF95EC39FC2B/100"
         self.pIcon = ""
         self.hasPartner = False
-        self.taskList = []  # type: List[DnfHelperChronicleUserTaskInfo]
+        self.taskList: list[DnfHelperChronicleUserTaskInfo] = []
 
     def fields_to_fill(self):
         return [
-            ('taskList', DnfHelperChronicleUserTaskInfo),
+            ("taskList", DnfHelperChronicleUserTaskInfo),
         ]
 
 
@@ -634,12 +651,12 @@ class DnfHelperChronicleUserTaskInfo(ConfigInterface):
 class DnfHelperChronicleSignList(ConfigInterface):
     def __init__(self):
         self.code = 200
-        self.gifts = []  # type: List[DnfHelperChronicleSignGiftInfo]
+        self.gifts: list[DnfHelperChronicleSignGiftInfo] = []
         self.msg = "success"
 
     def fields_to_fill(self):
         return [
-            ('gifts', DnfHelperChronicleSignGiftInfo),
+            ("gifts", DnfHelperChronicleSignGiftInfo),
         ]
 
 
@@ -745,11 +762,11 @@ class AmesvrQueryFriendsInfo(ConfigInterface):
         self.page = 1
         self.pageSize = 4
         self.total = 90
-        self.list = []  # type: List[AmesvrFriendInfo]
+        self.list: list[AmesvrFriendInfo] = []
 
     def fields_to_fill(self):
         return [
-            ('list', AmesvrFriendInfo),
+            ("list", AmesvrFriendInfo),
         ]
 
 
@@ -774,11 +791,11 @@ class BuyInfo(ConfigInterface):
         self.game_qqs = []
         self.expire_at = "2020-01-01 00:00:00"
         self.total_buy_month = 0
-        self.buy_records = []  # type: List[BuyRecord]
+        self.buy_records: list[BuyRecord] = []
 
     def fields_to_fill(self):
         return [
-            ('buy_records', BuyRecord),
+            ("buy_records", BuyRecord),
         ]
 
     def merge(self, other: BuyInfo):
@@ -796,7 +813,7 @@ class BuyInfo(ConfigInterface):
 
         self.total_buy_month += other.total_buy_month
 
-        records = [*self.buy_records, *other.buy_records]  # type: List[BuyRecord]
+        records: list[BuyRecord] = [*self.buy_records, *other.buy_records]
         records.sort(key=lambda br: br.buy_at)
 
         # 重新计算时长
@@ -815,7 +832,7 @@ class BuyInfo(ConfigInterface):
         self.expire_at = format_time(expired_at)
         self.buy_records = records
 
-    def append_records_and_recompute(self, new_records: List[BuyRecord]):
+    def append_records_and_recompute(self, new_records: list[BuyRecord]):
         other = BuyInfo()
         other.qq = self.qq
         other.buy_records = new_records
@@ -857,7 +874,9 @@ class BuyInfo(ConfigInterface):
         if len(self.game_qqs) != 0:
             msg += f"\n附属QQ {', '.join(self.game_qqs)}"
         if len(self.buy_records) != 0:
-            msg += "\n购买详情如下：\n" + '\n'.join('\t' + f'{record.buy_at} {record.reason} {record.buy_month} 月' for record in self.buy_records)
+            msg += "\n购买详情如下：\n" + "\n".join(
+                "\t" + f"{record.buy_at} {record.reason} {record.buy_month} 月" for record in self.buy_records
+            )
 
         msg += "\n"
         msg += "\n通过配置工具直接购买或者使用卡密购买，无需私聊告知，等待10到20分钟左右后即可到账。目前有缓存机制，可能不能及时查询到最新信息~"
@@ -874,7 +893,7 @@ class BuyInfo(ConfigInterface):
 
         return self.buy_records[0].is_dlc_reward()
 
-    def get_normal_buy_records(self) -> List[BuyRecord]:
+    def get_normal_buy_records(self) -> list[BuyRecord]:
         if self.infer_has_buy_dlc():
             return self.buy_records[1:]
 
@@ -912,6 +931,14 @@ class CardSecretUseDetail(ConfigInterface):
         self.use_at = "2020-03-13 12:30:15"  # 使用时间点
 
 
+class ActCommonInfo(ConfigInterface):
+    def __init__(self):
+        self.iActivityId = "354870"
+        self.sActivityName = "马杰洛的关怀第三期活动"
+        self.dtBeginTime = "2021-01-21 10:30:00"
+        self.dtEndTime = "2021-02-23 23:59:59"
+
+
 class AmsActInfo(ConfigInterface):
     def __init__(self):
         self.iActivityId = "354870"
@@ -938,16 +965,28 @@ class AmsActInfo(ConfigInterface):
         self.iAreaRoleModId = "15640"
         self.iAreaModIsNew = 1
         self.iAreaRoleFlowId = "732626"
-        self.iAreaRoleAppId = {
-            "qq_appid": "",
-            "wx_appid": "wxb30cf8a19c708c2a"
-        }
-        self.flows = {}
+        self.iAreaRoleAppId = {"qq_appid": "", "wx_appid": "wxb30cf8a19c708c2a"}
+        self.flows: dict[str, AmsActFlowInfo] = {}  # flowid => info
+
+    def dict_fields_to_fill(self) -> list[tuple[str, type[ConfigInterface]]]:
+        return [("flows", AmsActFlowInfo)]
 
     def is_last_day(self):
         from util import format_time, get_today, parse_time
 
-        return format_time(parse_time(self.dtEndTime), "%Y%m%d") == get_today()
+        return format_time(parse_time(self.get_endtime()), "%Y%m%d") == get_today()
+
+    def get_endtime(self) -> str:
+        return self.dtEndTime
+
+    def get_common_info(self) -> ActCommonInfo:
+        info = ActCommonInfo()
+        info.iActivityId = self.iActivityId
+        info.sActivityName = self.sActivityName
+        info.dtBeginTime = self.dtBeginTime
+        info.dtEndTime = self.dtEndTime
+
+        return info
 
 
 class AmsActFlowInfo(ConfigInterface):
@@ -961,6 +1000,98 @@ class AmsActFlowInfo(ConfigInterface):
         self.openToOpen = {}
         self.iCap = "0"
         self.functions = []
+
+
+class IdeActInfo(ConfigInterface):
+    def __init__(self):
+        self.iRet = 0
+        self.sMsg = "ok"
+        self.tokens: dict[str, str] = {}  # token => flowid
+        self.dev = IdeDevInfo()
+        self.flows: dict[str, IdeFlowInfo] = {}  # flowid => info
+        self.default_tpls: list[IdeTPLInfo] = []
+        self.iPaaSId = "434671"
+
+    def fields_to_fill(self):
+        return [
+            ("default_tpls", IdeTPLInfo),
+        ]
+
+    def dict_fields_to_fill(self) -> list[tuple[str, type[ConfigInterface]]]:
+        return [("flows", IdeFlowInfo)]
+
+    def is_last_day(self):
+        from util import format_time, get_today, parse_time
+
+        return format_time(parse_time(self.get_endtime()), "%Y%m%d") == get_today()
+
+    def get_endtime(self) -> str:
+        return self.dev.action.sDownDate
+
+    def get_common_info(self, act_id="") -> ActCommonInfo:
+        action = self.dev.action
+
+        info = ActCommonInfo()
+        info.iActivityId = act_id
+        info.sActivityName = action.sName
+        info.dtBeginTime = action.sUpDate
+        info.dtEndTime = action.sDownDate
+
+        return info
+
+    def get_bind_config(self) -> IdeTPLInfo | None:
+        """
+        获取绑定配置
+        """
+        for tpl in self.default_tpls:
+            if tpl.tpl == "bind_area":
+                return tpl
+
+        return None
+
+
+class IdeDevInfo(ConfigInterface):
+    def __init__(self):
+        self.host = "9.140.210.216 comm.ams.game.qq.com ; 9.25.7.222 apps.game.qq.com ; 9.25.7.222 ossweb-img.qq.com（若有未发布的iHub文件）"
+        self.action = IdeActionInfo()
+
+
+class IdeActionInfo(ConfigInterface):
+    def __init__(self):
+        from urls import not_know_end_time____, not_know_start_time__
+
+        self.sName = "无法获取活动名称"
+        self.sUpDate = not_know_start_time__
+        self.sDownDate = not_know_end_time____
+
+
+class IdeFlowInfo(ConfigInterface):
+    def __init__(self):
+        self.sIdeToken = "JKiTtc"
+        self.sAccountType = "1"
+        self.isLogin = "1"
+        self.sName = "接受礼盒"
+        self.iAreaChooseType = "1"
+        self.sServiceType = "dnf"
+        self.sTplType = "default"
+        self.iType = "1"
+        self.targetAppId = ""
+        self.sAMSTrusteeship = "0"
+        self.appName = ""
+        self.inputParams = []
+        self.iCustom = "1"
+        self.sAreaService = "dnf"
+
+
+class IdeTPLInfo(ConfigInterface):
+    def __init__(self):
+        self.tpl = "bind_area"
+        self.tpl_name = "大区角色绑定"
+        self.query_map_id = "113789"
+        self.query_map_token = "FfPhWA"
+        self.bind_map_id = "113790"
+        self.bind_map_token = "ii77aT"
+        self.sServiceType = "dnf"
 
 
 class XinyueWeeklyGiftInfo(ConfigInterface):
@@ -1099,11 +1230,11 @@ class GuanjiaNewQueryLotteryInfo(ConfigInterface):
         self.success = 0
         self.message = ""
         self._id = ""
-        self.result = []  # type: List[GuanjiaNewQueryLotteryResult]
+        self.result: list[GuanjiaNewQueryLotteryResult] = []
 
     def fields_to_fill(self):
         return [
-            ('result', GuanjiaNewQueryLotteryResult),
+            ("result", GuanjiaNewQueryLotteryResult),
         ]
 
 
@@ -1181,18 +1312,18 @@ class GuanjiaNewLotteryResultData(ConfigInterface):
 
 class ColgBattlePassInfo(ConfigInterface):
     def __init__(self):
-        self.activity_id = '4'
+        self.activity_id = "4"
         self.lv_score = 0
-        self.tasks = []  # type: List[ColgBattlePassTaskInfo]
-        self.rewards = []  # type: List[ColgBattlePassRewardInfo]
+        self.tasks: list[ColgBattlePassTaskInfo] = []
+        self.rewards: list[ColgBattlePassRewardInfo] = []
 
-    def fields_to_fill(self) -> List[Tuple[str, Type[ConfigInterface]]]:
+    def fields_to_fill(self) -> list[tuple[str, type[ConfigInterface]]]:
         return [
             ("tasks", ColgBattlePassTaskInfo),
             ("rewards", ColgBattlePassRewardInfo),
         ]
 
-    def untaken_rewards(self) -> List[str]:
+    def untaken_rewards(self) -> list[str]:
         untaken_rewards = []
 
         for reward in self.rewards:
@@ -1255,10 +1386,7 @@ class XiaojiangyouInfo(ConfigInterface):
         self.role_info = XiaojiangyouRoleInfo()
         self.history_page_count = 10
         self.certificate = "600eac0a8be98459477c30971c23f25cd63de6cc"
-        self.user_profile = {
-            "robot_use_status": 1,
-            "wx_img": ""
-        }
+        self.user_profile = {"robot_use_status": 1, "wx_img": ""}
 
 
 class XiaojiangyouInterveneMsg(ConfigInterface):
@@ -1333,6 +1461,34 @@ class NewArkLotterySendCardResult(ConfigInterface):
 
 
 class NewArkLotterySendCardResultData(ConfigInterface):
+    def __init__(self):
+        self.code = 0
+        self.message = ""
+
+
+class NewArkLotteryRequestCardResult(ConfigInterface):
+    def __init__(self):
+        self.code = 0
+        self.message = "succ"
+        self.data = NewArkLotteryRequestCardResultData()
+
+
+class NewArkLotteryRequestCardResultData(ConfigInterface):
+    def __init__(self):
+        self.token = ""
+
+
+class NewArkLotteryAgreeRequestCardResult(ConfigInterface):
+    def __init__(self):
+        self.code = 0
+        self.message = "succ"
+        self.data = NewArkLotteryAgreeRequestCardResultData()
+
+    def is_ok(self) -> bool:
+        return self.code == 0 and self.data.code == 0
+
+
+class NewArkLotteryAgreeRequestCardResultData(ConfigInterface):
     def __init__(self):
         self.code = 0
         self.message = ""
@@ -1453,12 +1609,36 @@ class XinYueMatchServerRequestTeamResponse(ConfigInterface):
         self.team_id = ""
 
 
+class DnfChronicleMatchServerAddUserRequest(ConfigInterface):
+    def __init__(self):
+        self.user_id = ""
+        self.qq = ""
+
+
+class DnfChronicleMatchServerCommonResponse(ConfigInterface):
+    def __init__(self):
+        self.code = 0
+        self.message = ""
+        self.data = None
+
+
+class DnfChronicleMatchServerRequestUserRequest(ConfigInterface):
+    def __init__(self):
+        self.request_user_id = ""
+        self.request_qq = ""
+
+
+class DnfChronicleMatchServerRequestUserResponse(ConfigInterface):
+    def __init__(self):
+        self.user_id = ""
+
+
 class CreateWorkListInfo(ConfigInterface):
     def __init__(self):
         self.total = "0"
-        self.list = []  # type: List[CreateWorkInfo]
+        self.list: list[CreateWorkInfo] = []
 
-    def fields_to_fill(self) -> List[Tuple[str, Type[ConfigInterface]]]:
+    def fields_to_fill(self) -> list[tuple[str, type[ConfigInterface]]]:
         return [
             ("list", CreateWorkInfo),
         ]
@@ -1485,7 +1665,16 @@ class CreateWorkInfo(ConfigInterface):
         self.kol = ""
         self.sFromUrl = ""
         self.sTitle = "魔界人元气满满防尘口罩"
-        self.sContent = "<p><melo-data></melo-data></p><div><h1>魔界人口罩</h1><p>卖点：生活刚需，成本低下，展示个性。</p><p><img src='https://img.tgl.qq.com/cover/20211005/3f244bb8bee2ee6ef63d89fb235cf086_1633411914.png' style='max-width: 100%; height: auto;'  /><br  /></p><p><br  /></p><p>设计：考虑到防疫口罩拥有极高的安全等级，因此推荐制作常规的装饰级口罩。<br  /></p><p><img src='https://img.tgl.qq.com/cover/20211005/5423e9635781cb5d4f54b8a6dbfcfb77_1633414580.png' style='max-width: 100%; height: auto;'  /><br  /></p><p><br  /></p><p>·背景：</p><p>疫情时代下，口罩成为了人们的必需品。</p><p>2021年春节期间，五菱宏光为春晚独家提供了口罩支持，使其成为了当时春晚最成功的营销品牌之一。</p><p>看人先看脸，口罩作为戴在人们脸上的挂件，是最受人们关注的产品之一。一个好看的口罩，不仅可以让佩戴者心情愉悦，同时还可以广泛吸引其他人眼光。</p><p><img src='https://img.tgl.qq.com/cover/20211005/c19b96a1605df657c7f9252e3612df64_1633412019.png' style='max-width: 100%; height: auto;'  /><br  /></p><p><br  /></p><p>案例：</p><p>著名游戏《最终幻想》系列厂商——史克威尔工作室就曾经推出过一款简单的文字口罩，作为周边商城满单赠送礼物，引发游戏圈不小讨论。</p><p><img src='https://img.tgl.qq.com/source/open/20211005/16334120477ad1d9973bb26993.jpg' style='max-width: 100%; height: auto;' data-origin='https%3A%2F%2Fimg1.gamersky.com%2Fimage2020%2F05%2F20200512_zty_412_4%2Fgamersky_02origin_03_202051210515B8.jpg'  /><br  /></p><p><br  /></p><p><br  /></p></div><img style='width:1px;height:1px;border:none' forstat='1'  src='https://itea-stat.qq.com/img/stat?cid=tgleb0db07909bad&aid=1774933'>"
+        self.sContent = (
+            "<p><melo-data></melo-data></p><div><h1>魔界人口罩</h1><p>卖点：生活刚需，成本低下，展示个性。</p><p><img src='https://img.tgl.qq.com/cover/20211005/3f244bb8bee2ee6ef63d89fb235cf086_1633411914.png' style='max-width: "
+            "100%; height: auto;'  /><br  /></p><p><br  /></p><p>设计：考虑到防疫口罩拥有极高的安全等级，因此推荐制作常规的装饰级口罩。<br  /></p><p><img src='https://img.tgl.qq.com/cover/20211005/5423e9635781cb5d4f54b8a6dbfcfb77_"
+            "1633414580.png' style='max-width: 100%; height: auto;'  /><br  /></p><p><br  /></p><p>·背景：</p><p>疫情时代下，口罩成为了人们的必需品。</p><p>2021年春节期间，五菱宏光为春晚独家提供了口罩支持，使其成为了当时春晚最成功的营"
+            "销品牌之一。</p><p>看人先看脸，口罩作为戴在人们脸上的挂件，是最受人们关注的产品之一。一个好看的口罩，不仅可以让佩戴者心情愉悦，同时还可以广泛吸引其他人眼光。</p><p><img src='https://img.tgl.qq.com/cover/20211005/c19b96a1605df6"
+            "57c7f9252e3612df64_1633412019.png' style='max-width: 100%; height: auto;'  /><br  /></p><p><br  /></p><p>案例：</p><p>著名游戏《最终幻想》系列厂商——史克威尔工作室就曾经推出过一款简单的文字口罩，作为周边商城满单赠送礼物，"
+            "引发游戏圈不小讨论。</p><p><img src='https://img.tgl.qq.com/source/open/20211005/16334120477ad1d9973bb26993.jpg' style='max-width: 100%; height: auto;' data-origin='https%3A%2F%2Fimg1.gamersky.com%2Fimage2020%2F0"
+            "5%2F20200512_zty_412_4%2Fgamersky_02origin_03_202051210515B8.jpg'  /><br  /></p><p><br  /></p><p><br  /></p></div><img style='width:1px;height:1px;border:none' forstat='1'  src='https://itea-stat.qq.com/img/sta"
+            "t?cid=tgleb0db07909bad&aid=1774933'>"
+        )
         self.sDetailUrl = ""
         self.sInfoImageAddr = "https://img.tgl.qq.com/cover/20211005/e0d739e75c6b71b43f13ae1f92515c2b_1633414545.png"
         self.sInfoBigImageAddr = "https://img.tgl.qq.com/cover/20211005/e0d739e75c6b71b43f13ae1f92515c2b_1633414545.png"
@@ -1495,7 +1684,9 @@ class CreateWorkInfo(ConfigInterface):
         self.sHourLong = ""
         self.dtCreateTime = "2021-10-05 14:16:42"
         self.dtModifyTime = "2021-11-10 18:11:40"
-        self.statUrl = "http://itea-cdn.qq.com/file/tgl/js/tgl_moni.js?aid=1774933&gid=453&cid=tgleb0db07909bad&_t=1637424000"
+        self.statUrl = (
+            "http://itea-cdn.qq.com/file/tgl/js/tgl_moni.js?aid=1774933&gid=453&cid=tgleb0db07909bad&_t=1637424000"
+        )
         self.iDeliverSource = 6
         self.atlas = ""
         self.covers = []
@@ -1522,7 +1713,85 @@ class CreateWorkInfo(ConfigInterface):
         self.iPraiseNum = "528"
 
 
-if __name__ == '__main__':
+class MoJieRenInfo(ConfigInterface):
+    def __init__(self):
+        self.iRet = "0"
+        self.sMsg = "ok"
+        self.cubeNum = "0"
+        self.lotteryNum = "0"
+        self.iCurrPos = "7"
+        self.iCurrRound = "1"
+        self.iExploreTimes = "2"
+        self.hold = MoJieRenHoldInfo()
+        self.inviteList = []
+        self.task = {}
+
+    def on_config_update(self, raw_config: dict):
+        # 首次查询时，部分字段会是null，需要修改为正确的值，确保后续逻辑无误
+        # "iCurrPos": null, "iCurrRound": null, "iExploreTimes": null
+        self.iCurrPos = self.iCurrPos or "1"
+        self.iCurrRound = self.iCurrRound or "1"
+        self.iExploreTimes = self.iExploreTimes or "0"
+
+
+class MoJieRenHoldInfo(ConfigInterface):
+    def __init__(self):
+        self.round1 = MoJieRenHoldItem()
+        self.round2 = MoJieRenHoldItem()
+        self.round3 = MoJieRenHoldItem()
+        self.adventure30 = MoJieRenHoldItem()
+        self.loginGift = MoJieRenHoldItem()
+        self.returnLoginGift = MoJieRenHoldItem()
+
+
+class MoJieRenHoldItem(ConfigInterface):
+    def __init__(self):
+        self.iLeftNum = 0
+
+
+class MaJieLuoInfo(ConfigInterface):
+    def __init__(self):
+        self.iRet = "0"
+        self.sMsg = "ok"
+        self.jHolds = {}
+        self.iLogined = "1"
+        self.iSend = "0"
+        self.iOpen = "0"
+        self.iDrawed = "0"
+        self.iDraw = "0"
+        self.iFuqi = "40"
+        self.iPassed = "0"
+        self.iLuck = "0"
+
+
+class VoteWorkList(ConfigInterface):
+    def __init__(self):
+        self.iRet = "0"
+        self.sMsg = "ok"
+        self.data: list[VoteWorkInfo] = []
+
+    def fields_to_fill(self) -> list[tuple[str, type[ConfigInterface]]]:
+        return [
+            ("data", VoteWorkInfo),
+        ]
+
+
+class VoteWorkInfo(ConfigInterface):
+    def __init__(self):
+        self.tickets = 9064
+        self.title = "鹿王本生-女鬼剑士"
+        self.workId = "21"
+
+
+class DnfHelperChronicleBindInfo(ConfigInterface):
+    def __init__(self):
+        self.is_need_bind = True
+        self.is_allow_enter = False
+        self.is_roleid_bind_userid_match = False
+        self.tip = ""
+
+
+if __name__ == "__main__":
     from util import format_time, parse_time
 
     a = BuyInfo()

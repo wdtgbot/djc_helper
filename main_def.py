@@ -1,25 +1,94 @@
+import datetime
+import json
+import os
+import platform
+import random
+import shutil
+import subprocess
+import sys
+import threading
+import time
 from multiprocessing import cpu_count, freeze_support
+from typing import Callable, Dict, List, Optional, Tuple
+
+import requests
 
 from config import AccountConfig, CommonConfig, Config, config, load_config
 from const import downloads_dir
-from dao import BuyRecord
-from djc_helper import (DjcHelper, get_prize_names, is_new_version_ark_lottery,
-                        run_act)
-from first_run import *
+from dao import BuyInfo, BuyRecord
+from db import DnfHelperChronicleUserActivityTopInfoDB, UserBuyInfoDB
+from djc_helper import DjcHelper, get_prize_names, is_new_version_ark_lottery, run_act
+from exceptions_def import ArkLotteryTargetQQSendByRequestReachMaxCount
+from first_run import is_daily_first_run, is_first_run, is_weekly_first_run
+from log import asciiReset, color, logger
 from notice import NoticeManager
 from pool import get_pool, init_pool
 from qq_login import QQLogin
 from qzone_activity import QzoneActivity
-from setting import *
-from show_usage import *
+from server import get_pay_server_addr
+from setting import parse_card_group_info_map, zzconfig
+from show_usage import (
+    global_usage_counter_name,
+    my_active_monthly_pay_usage_counter_name,
+    my_auto_updater_usage_counter_name,
+    my_usage_counter_name,
+    this_version_global_usage_counter_name,
+    this_version_my_usage_counter_name,
+)
 from update import check_update_on_start, get_update_info
 from upload_lanzouyun import Uploader
 from urls import Urls, get_not_ams_act_desc
-from usage_count import *
-from version import author
+from usage_count import get_count, increase_counter
+from util import (
+    MB_ICONINFORMATION,
+    append_if_not_in,
+    async_call,
+    async_message_box,
+    auto_updater_latest_path,
+    auto_updater_path,
+    bypass_proxy,
+    cache_name_user_buy_info,
+    change_title,
+    clear_login_status,
+    exists_auto_updater_dlc,
+    exists_flag_file,
+    format_now,
+    format_time,
+    get_appdata_dir,
+    is_run_in_github_action,
+    is_windows,
+    make_sure_dir_exists,
+    md5_file,
+    message_box,
+    now_before,
+    padLeftRight,
+    parse_time,
+    parse_timestamp,
+    pause,
+    pause_and_exit,
+    printed_width,
+    range_from_one,
+    remove_none_from_list,
+    run_from_src,
+    show_head_line,
+    show_quick_edit_mode_tip,
+    sync_configs,
+    tableify,
+    time_less,
+    try_except,
+    uin2qq,
+    use_by_myself,
+    wait_a_while,
+    with_cache,
+)
+from version import author, now_version, ver_time
+
+if is_windows():
+    import win32api
+    import win32con
 
 
-def has_any_account_in_normal_run(cfg):
+def has_any_account_in_normal_run(cfg: Config):
     for _idx, account_config in enumerate(cfg.account_configs):
         if not account_config.is_enabled():
             # 未启用的账户的账户不走该流程
@@ -54,6 +123,23 @@ def check_djc_role_binding():
                 continue
 
             logger.warning(color("fg_bold_yellow") + f"------------检查第{idx}个账户({account_config.name}------------")
+
+            # 如果配置为无法绑定道聚城，则提示将无法领取任何奖励
+            if account_config.cannot_bind_dnf:
+                async_message_box(
+                    (
+                        f"账号 {account_config.name} 目前配置为 【无法在道聚城绑定dnf】，将产生下列后果：\n"
+                        f"1. 将在未绑定道聚城的情况下可以继续使用\n"
+                        f"2. 因未绑定道聚城，将无法获取角色绑定信息，因此将无法领取任何其他奖励\n"
+                        "\n"
+                        "这个开关主要用于小号，被风控不能注册dnf账号，但是不影响用来当抽卡等活动的工具人\n"
+                        "请确定你打开这个开关的目的是这样，如果仅仅是不想领取道聚城的奖励，其他奖励想正常使用，请勿打开本开关，请单独修改【道聚城兑换】相关的配置\n"
+                    ),
+                    f"禁用道聚城绑定后果提示_{account_config.name}",
+                    show_once=True,
+                    color_name="yellow",
+                )
+
             djcHelper = DjcHelper(account_config, cfg.common)
             if not djcHelper.check_djc_role_binding():
                 all_binded = False
@@ -62,14 +148,56 @@ def check_djc_role_binding():
         if all_binded:
             break
         else:
-            logger.warning(color("bold_blue") + f"请前往道聚城（未安装的话，手机上应用商城搜索 道聚城 下载安装就行）将上述提示的未绑定dnf或任意手游的账号【{not_binded_accounts}】进行绑定（就是去道聚城对应游戏页面把领奖角色给选好）")
-            logger.warning(color("bold_blue") + (
-                f"具体操作流程可以参考一下教程信息：\n"
-                "1. 使用教程/使用文档.docx 【设置领奖角色】章节和【设置道聚城手游角色】章节\n"
-                "2. 使用教程/道聚城自动化助手使用视频教程 中 DNF蚊子腿小助手4.1.1版本简要&完整视频教程 中 3:17 位置 关于绑定的介绍"
-            ))
-            logger.warning(color("bold_green") + "如果本账号不需要道聚城相关操作，可以打开配置工具，将该账号的【道聚城配置】中的【无法在道聚城绑定dnf】勾选上，并将【完成礼包达人任务的手游名称】设为最上方的【无】")
-            logger.warning(color("fg_bold_cyan") + "操作完成后点击任意键即可再次进行检查流程...")
+            _show_head_line("0. 以上是问题描述")
+
+            _show_head_line("1. 解决方案")
+            logger.warning(
+                color("bold_cyan")
+                + "请前往道聚城（未安装的话，手机上应用商城搜索 道聚城 下载安装就行）将上述提示的未绑定【dnf】或【任意手游】的账号进行绑定（就是去道聚城对应游戏页面把领奖角色给选好）"
+            )
+
+            logger.info(color("bold_cyan") + "相关账号如下:")
+            heads = ["序号", "账号名", "QQ"]
+            colSizes = [4, 12, 10]
+            logger.info(color("bold_cyan") + tableify(heads, colSizes))
+            for idx, info in enumerate(not_binded_accounts):
+                name, qq = info
+
+                row = [idx + 1, name, qq]
+                logger.info(color("bold_cyan") + tableify(row, colSizes))
+
+            _show_head_line("2. 详细教程")
+            logger.warning(
+                color("bold_cyan")
+                + (
+                    "具体操作流程可以参考一下教程信息：\n"
+                    "1. 使用教程/使用文档.docx 【设置领奖角色】章节和【设置道聚城手游角色】章节\n"
+                    "2. 使用教程/道聚城自动化助手使用视频教程 中 DNF蚊子腿小助手4.1.1版本简要&完整视频教程 中 3:17 位置 关于绑定的介绍"
+                )
+            )
+
+            _show_head_line("3. 跳过方式")
+            logger.warning(
+                color("bold_yellow")
+                + (
+                    "如果本账号不需要道聚城相关操作，请按下列步骤操作\n"
+                    "1. 可以打开配置工具，点开对应账号的tab\n"
+                    "2. 将该账号的【道聚城配置】中的【无法在道聚城绑定dnf】勾选上\n"
+                    "3. 并将【完成礼包达人任务的手游名称】选择为最上方的【无】\n"
+                    "4. 保存配置\n"
+                    "5. 回到这个页面按任意键继续\n"
+                    "\n"
+                    "PS:\n"
+                    "勾选【无法在道聚城绑定dnf】后将无法领取任何奖励，主要用于小号，被风控不能注册dnf账号，但是不影响用来当抽卡等活动的工具人\n"
+                    "勾选【完成礼包达人任务的手游名称】后道聚城的每日手游活动将不会完成，活跃度会低于领取金宝箱所需\n"
+                )
+            )
+
+            _show_head_line("4. 请完成上述操作，然后按任意键再次进行检查")
+            logger.warning(color("bold_red") + "千万不要进群问这个，会被直接踢的。不欢迎不看文档，也不看提示的人。")
+            logger.warning(color("bold_yellow") + "千万不要进群问这个，会被直接踢的。不欢迎不看文档，也不看提示的人。")
+            logger.warning(color("bold_blue") + "千万不要进群问这个，会被直接踢的。不欢迎不看文档，也不看提示的人。")
+            logger.info("\n\n")
             pause()
 
             # 这时候重新读取一遍用户修改过后的配置文件（比如把手游设为了 无 ）
@@ -88,14 +216,20 @@ def check_all_skey_and_pskey(cfg: Config, check_skey_only=False):
         # 并行登陆
         logger.info(color("bold_yellow") + f"已开启多进程模式({cfg.get_pool_size()})，并检测到所有账号均使用自动登录模式，将开启并行登录模式")
 
-        get_pool().starmap(do_check_all_skey_and_pskey, [(_idx + 1, _idx + 1, account_config, cfg.common, check_skey_only)
-                                                         for _idx, account_config in enumerate(cfg.account_configs) if account_config.is_enabled()])
+        get_pool().starmap(
+            do_check_all_skey_and_pskey,
+            [
+                (_idx + 1, _idx + 1, account_config, cfg.common, check_skey_only)
+                for _idx, account_config in enumerate(cfg.account_configs)
+                if account_config.is_enabled()
+            ],
+        )
 
         logger.info("并行登陆完毕，串行加载缓存的登录信息到cfg变量中")
         check_all_skey_and_pskey_silently_sync(cfg)
     else:
         # 串行登录
-        qq2index = {}
+        qq2index: Dict[str, int] = {}
 
         for _idx, account_config in enumerate(cfg.account_configs):
             idx = _idx + 1
@@ -116,7 +250,9 @@ def check_all_skey_and_pskey(cfg: Config, check_skey_only=False):
     logger.info("全部账号检查完毕")
 
 
-def do_check_all_skey_and_pskey(idx: int, window_index: int, account_config: AccountConfig, common_config: CommonConfig, check_skey_only: bool) -> Optional[DjcHelper]:
+def do_check_all_skey_and_pskey(
+    idx: int, window_index: int, account_config: AccountConfig, common_config: CommonConfig, check_skey_only: bool
+) -> Optional[DjcHelper]:
     wait_a_while(idx)
 
     logger.warning(color("fg_bold_yellow") + f"------------检查第{idx}个账户({account_config.name})------------")
@@ -129,7 +265,9 @@ def check_all_skey_and_pskey_silently_sync(cfg: Config):
         _do_check_all_skey_and_pskey(1, account_config, cfg.common, False)
 
 
-def _do_check_all_skey_and_pskey(window_index: int, account_config: AccountConfig, common_config: CommonConfig, check_skey_only: bool) -> Optional[DjcHelper]:
+def _do_check_all_skey_and_pskey(
+    window_index: int, account_config: AccountConfig, common_config: CommonConfig, check_skey_only: bool
+) -> Optional[DjcHelper]:
     if not account_config.is_enabled():
         # 未启用的账户的账户不走该流程
         return None
@@ -161,8 +299,14 @@ def auto_send_cards(cfg: Config):
     account_data = []
     if cfg.common.enable_multiprocessing:
         logger.info(f"已开启多进程模式({cfg.get_pool_size()})，将并行拉取数据~")
-        for data in get_pool().starmap(query_account_ark_lottery_info, [(_idx + 1, len(cfg.account_configs), account_config, cfg.common)
-                                                                        for _idx, account_config in enumerate(cfg.account_configs) if account_config.is_enabled()]):
+        for data in get_pool().starmap(
+            query_account_ark_lottery_info,
+            [
+                (_idx + 1, len(cfg.account_configs), account_config, cfg.common)
+                for _idx, account_config in enumerate(cfg.account_configs)
+                if account_config.is_enabled()
+            ],
+        ):
             account_data.append(data)
     else:
         for _idx, account_config in enumerate(cfg.account_configs):
@@ -171,7 +315,9 @@ def auto_send_cards(cfg: Config):
                 # 未启用的账户的账户不走该流程
                 continue
 
-            account_data.append(query_account_ark_lottery_info(idx, len(cfg.account_configs), account_config, cfg.common))
+            account_data.append(
+                query_account_ark_lottery_info(idx, len(cfg.account_configs), account_config, cfg.common)
+            )
 
     account_data = remove_none_from_list(account_data)
 
@@ -198,13 +344,22 @@ def auto_send_cards(cfg: Config):
                 left_times = qq_to_djcHelper[target_qq].ark_lottery_query_left_times(target_qq)
 
             name = qq_to_djcHelper[target_qq].cfg.name
-            logger.warning(color("fg_bold_green") + f"第{idx + 1}/{len(target_qqs)}个赠送目标账号 {name}({target_qq}) 今日仍可被赠送 {left_times} 次卡片{extra_message}")
+            logger.warning(
+                color("fg_bold_green")
+                + f"第{idx + 1}/{len(target_qqs)}个赠送目标账号 {name}({target_qq}) 今日仍可被赠送 {left_times} 次卡片{extra_message}"
+            )
             # 最多赠送目标账号今日仍可接收的卡片数
-            for send_idx in range_from_one(left_times):
-                other_account_has_card = send_card(target_qq, qq_to_card_name_to_counts, qq_to_prize_counts, qq_to_djcHelper, target_qqs)
-                if not other_account_has_card:
-                    logger.warning(f"第 {send_idx} 次赠送时其他账号已经没有任何卡片，跳过后续尝试")
-                    break
+            try:
+                for send_idx in range_from_one(left_times):
+                    logger.info(color("bold_yellow") + f"尝试第 [{send_idx}/{left_times}] 次赠送卡片给 {name}({target_qq})")
+                    other_account_has_card = send_card(
+                        target_qq, qq_to_card_name_to_counts, qq_to_prize_counts, qq_to_djcHelper, target_qqs
+                    )
+                    if not other_account_has_card:
+                        logger.warning(f"第 {send_idx} 次赠送时其他账号已经没有任何卡片，跳过后续尝试")
+                        break
+            except ArkLotteryTargetQQSendByRequestReachMaxCount as e:
+                logger.warning(color("bold_yellow") + f"{name}({target_qq}) 今日被赠送和通过索取来赠送均已达上限，将跳过尝试后续赠送尝试。具体结果为：{e}")
 
             # 赠送卡片完毕后尝试领取奖励和抽奖
             djcHelper = qq_to_djcHelper[target_qq]
@@ -228,13 +383,13 @@ def try_copy_cards(djcHelper: DjcHelper):
     if not use_by_myself():
         return
     # 目前似乎可以赠送给自己，先自己测试几天
-    logger.warning(color("bold_yellow") + f"仅本号测试：尝试额外赠送给自己（复制卡片）")
+    logger.warning(color("bold_yellow") + "仅本号测试：尝试额外赠送给自己（复制卡片）")
 
     card_name_to_counts = djcHelper.dnf_ark_lottery_get_card_counts()
     logger.warning(color("bold_green") + f"尝试额外赠送给自己（复制卡片），最新卡片信息为：{card_name_to_counts}")
 
     # 尝试复制四次
-    for copy_idx in range_from_one(4):
+    for _copy_idx in range_from_one(4):
         # 当前账号的卡牌按照卡牌数升序排列，取出其中为正数的部分来尝试进行复制卡片（赠送给自己）
         owned_card_infos = get_owned_card_infos_sort_by_count(card_name_to_counts)
         if len(owned_card_infos) == 0:
@@ -264,11 +419,14 @@ def get_owned_card_infos_sort_by_count(card_name_to_counts: Dict[str, int]) -> L
     return owned_card_infos
 
 
-def query_account_ark_lottery_info(idx: int, total_account: int, account_config: AccountConfig, common_config: CommonConfig) -> Tuple[Dict[str, int], Dict[str, int], DjcHelper]:
+def query_account_ark_lottery_info(
+    idx: int, total_account: int, account_config: AccountConfig, common_config: CommonConfig
+) -> Optional[Tuple[Dict[str, int], Dict[str, int], DjcHelper]]:
     djcHelper = DjcHelper(account_config, common_config)
     lr = djcHelper.fetch_pskey()
     if lr is None:
-        return
+        return None
+
     djcHelper.check_skey_expired()
     djcHelper.get_bind_role_list(print_warning=False)
 
@@ -289,14 +447,20 @@ def query_account_ark_lottery_info(idx: int, total_account: int, account_config:
     return card_name_to_counts, prize_counts, djcHelper
 
 
-def send_card(target_qq: str, qq_to_card_name_to_counts: Dict[str, Dict[str, int]], qq_to_prize_counts: Dict[str, Dict[str, int]], qq_to_djcHelper: Dict[str, DjcHelper], target_qqs: List[str]) -> bool:
+def send_card(
+    target_qq: str,
+    qq_to_card_name_to_counts: Dict[str, Dict[str, int]],
+    qq_to_prize_counts: Dict[str, Dict[str, int]],
+    qq_to_djcHelper: Dict[str, DjcHelper],
+    target_qqs: List[str],
+) -> bool:
     """
     返回 是否有其他账号有可以赠送的卡片
     """
 
     # 检查目标账号是否有可剩余的兑换奖励次数
     has_any_left_gift = False
-    for name, count in qq_to_prize_counts[target_qq].items():
+    for _name, count in qq_to_prize_counts[target_qq].items():
         if count > 0:
             has_any_left_gift = True
             break
@@ -311,8 +475,8 @@ def send_card(target_qq: str, qq_to_card_name_to_counts: Dict[str, Dict[str, int
     else:
         logger.debug("所有奖励都已兑换，将赠送目标QQ其他QQ最富余的卡片")
         # 统计其余账号的各卡牌总数
-        merged_card_name_to_count = {}
-        for qq, card_name_to_count in qq_to_card_name_to_counts.items():
+        merged_card_name_to_count: Dict[str, int] = {}
+        for _qq, card_name_to_count in qq_to_card_name_to_counts.items():
             for card_name, card_count in card_name_to_count.items():
                 merged_card_name_to_count[card_name] = merged_card_name_to_count.get(card_name, 0) + card_count
         # 降序排列
@@ -321,7 +485,7 @@ def send_card(target_qq: str, qq_to_card_name_to_counts: Dict[str, Dict[str, int
         target_card_infos.sort(key=lambda card: -card[1])
 
     # 升序遍历
-    for card_name, card_count in target_card_infos:
+    for card_name, _card_count in target_card_infos:
         # 找到任意一个拥有卡片的其他账号，让他送给目标账户。默认越靠前的号越重要，因此从后面的号开始查
         for qq, card_name_to_count in reverse_map(qq_to_card_name_to_counts):
             if qq in target_qqs:
@@ -332,13 +496,20 @@ def send_card(target_qq: str, qq_to_card_name_to_counts: Dict[str, Dict[str, int
                 index: str
 
                 if is_new_version_ark_lottery():
-                    send_ok = qq_to_djcHelper[qq].dnf_ark_lottery_send_card(card_name, target_qq)
+                    send_ok = qq_to_djcHelper[qq].dnf_ark_lottery_send_card(
+                        card_name, target_qq, target_djc_helper=qq_to_djcHelper[target_qq]
+                    )
 
                     index = new_ark_lottery_parse_index_from_card_id(card_name)
                 else:
                     card_info_map = parse_card_group_info_map(qq_to_djcHelper[target_qq].zzconfig)
 
-                    send_ok = qq_to_djcHelper[qq].send_card(card_name, card_info_map[card_name].id, target_qq).get('ecode', -1) == 0
+                    send_ok = (
+                        qq_to_djcHelper[qq]
+                        .send_card(card_name, card_info_map[card_name].id, target_qq)
+                        .get("ecode", -1)
+                        == 0
+                    )
                     index = card_info_map[card_name].index
 
                 card_name_to_count[card_name] -= 1
@@ -347,17 +518,19 @@ def send_card(target_qq: str, qq_to_card_name_to_counts: Dict[str, Dict[str, int
                 name = qq_to_djcHelper[qq].cfg.name
                 target_name = qq_to_djcHelper[target_qq].cfg.name
 
-                logger.warning(color("fg_bold_cyan") + f"账号 {name} 赠送一张 {index}({card_name}) 给 {target_name}， 结果为 {send_ok}")
+                logger.warning(
+                    color("fg_bold_cyan") + f"账号 {name} 赠送一张 {index}({card_name}) 给 {target_name}， 结果为 {send_ok}"
+                )
                 return True
 
     return False
 
 
-def new_ark_lottery_parse_index_from_card_id(card_id: str) -> str:
+def new_ark_lottery_parse_index_from_card_id(card_id_str: str) -> str:
     """
     将 卡片id 转换为 坐标，如 7 -> 2-3
     """
-    card_id = int(card_id)
+    card_id = int(card_id_str)
     row = (card_id + 3) // 4
     col = (card_id - 1) % 4 + 1
     index = f"{row}-{col}"
@@ -369,7 +542,7 @@ def new_ark_lottery_parse_card_id_from_index(index: str) -> str:
     """
     将 坐标 转换为 卡片id，如 2-3 -> 7
     """
-    row, col = index.split('-')
+    row, col = index.split("-")
     return str(4 * (int(row) - 1) + int(col))
 
 
@@ -412,8 +585,14 @@ def show_lottery_status(ctx, cfg: Config, need_show_tips=False):
     rows = []
     if cfg.common.enable_multiprocessing:
         logger.info(f"已开启多进程模式({cfg.get_pool_size()})，将并行拉取数据~")
-        for row in get_pool().starmap(query_lottery_status, [(_idx + 1, account_config, cfg.common, card_indexes, prize_indexes, order_map)
-                                                             for _idx, account_config in enumerate(cfg.account_configs) if account_config.is_enabled()]):
+        for row in get_pool().starmap(
+            query_lottery_status,
+            [
+                (_idx + 1, account_config, cfg.common, card_indexes, prize_indexes, order_map)
+                for _idx, account_config in enumerate(cfg.account_configs)
+                if account_config.is_enabled()
+            ],
+        ):
             rows.append(row)
     else:
         for _idx, account_config in enumerate(cfg.account_configs):
@@ -427,7 +606,12 @@ def show_lottery_status(ctx, cfg: Config, need_show_tips=False):
     rows = remove_none_from_list(rows)
 
     # 计算概览
-    summaryCols = [1, "总计", *[0 for card in card_indexes], *[count_with_color(0, "bold_green", show_width=printed_width(prize_index)) for prize_index in prize_indexes]]
+    summaryCols = [
+        1,
+        "总计",
+        *[0 for card in card_indexes],
+        *[count_with_color(0, "bold_green", show_width=printed_width(prize_index)) for prize_index in prize_indexes],
+    ]
     for row in rows:
         summaryCols[0] += 1
         for i in range(2, 2 + 12):
@@ -435,7 +619,9 @@ def show_lottery_status(ctx, cfg: Config, need_show_tips=False):
 
     for cardIdx in range(len(card_indexes)):
         idx = len(baseHeads) + cardIdx
-        summaryCols[idx] = colored_count(len(cfg.account_configs), summaryCols[idx], cfg.common.ark_lottery_summary_show_color or "fg_thin_cyan")
+        summaryCols[idx] = colored_count(
+            len(cfg.account_configs), summaryCols[idx], cfg.common.ark_lottery_summary_show_color or "fg_thin_cyan"
+        )
 
     # 计算可以开启抽奖卡片的账号
     accounts_that_should_enable_cost_card_to_lottery = []
@@ -473,7 +659,7 @@ def show_lottery_status(ctx, cfg: Config, need_show_tips=False):
 
     # 打印提示
     if need_show_tips and len(accounts_that_should_enable_cost_card_to_lottery) > 0:
-        accounts = ', '.join(accounts_that_should_enable_cost_card_to_lottery)
+        accounts = ", ".join(accounts_that_should_enable_cost_card_to_lottery)
         msg = f"账户({accounts})仍有剩余卡片，但已无任何可领取礼包，建议开启消耗卡片来抽奖的功能"
         logger.warning(color("fg_bold_yellow") + msg)
 
@@ -520,14 +706,21 @@ def make_ark_lottery_card_and_award_info():
     return order_map, prizeDisplayTitles
 
 
-def query_lottery_status(idx: int, account_config: AccountConfig, common_config: CommonConfig, card_indexes: List[str], prize_indexes: List[str], order_map: Dict[str, str]) -> Optional[List]:
+def query_lottery_status(
+    idx: int,
+    account_config: AccountConfig,
+    common_config: CommonConfig,
+    card_indexes: List[str],
+    prize_indexes: List[str],
+    order_map: Dict[str, str],
+) -> Optional[List]:
     if not account_config.ark_lottery.show_status:
-        return
+        return None
 
     djcHelper = DjcHelper(account_config, common_config)
     lr = djcHelper.fetch_pskey()
     if lr is None:
-        return
+        return None
     djcHelper.check_skey_expired()
     djcHelper.get_bind_role_list(print_warning=False)
 
@@ -548,7 +741,7 @@ def query_lottery_status(idx: int, account_config: AccountConfig, common_config:
     cols = [idx, account_config.name]
 
     # 处理各个卡片数目
-    for card_position, card_index in enumerate(card_indexes):
+    for _card_position, card_index in enumerate(card_indexes):
         card_count = card_counts[order_map[card_index]]
 
         cols.append(card_count)
@@ -627,8 +820,14 @@ def sas(cfg: Config, ctx: str, user_buy_info: BuyInfo):
     rows = []
     if cfg.common.enable_multiprocessing:
         logger.warning(f"已开启多进程模式({cfg.get_pool_size()})，将开始并行拉取数据，请稍后")
-        for row in get_pool().starmap(get_account_status, [(_idx + 1, account_config, cfg.common, user_buy_info) for _idx, account_config in enumerate(cfg.account_configs)
-                                                           if account_config.is_enabled()]):
+        for row in get_pool().starmap(
+            get_account_status,
+            [
+                (_idx + 1, account_config, cfg.common, user_buy_info)
+                for _idx, account_config in enumerate(cfg.account_configs)
+                if account_config.is_enabled()
+            ],
+        ):
             rows.append(row)
     else:
         logger.warning("拉取数据中，请稍候")
@@ -642,20 +841,52 @@ def sas(cfg: Config, ctx: str, user_buy_info: BuyInfo):
 
     # 打印结果
     heads = [
-        "序号", "账号名", "聚豆余额", "历史总数", "心悦类型", "成就点", "勇士币", "心悦组队", "赛利亚",
-        "上周心悦", "自动组队", "心悦G分", "编年史", "年史碎片", "搭档", "论坛代币券", "闪光杯爆装"
+        "序号",
+        "账号名",
+        "聚豆余额",
+        "心悦类型",
+        "成就点",
+        "勇士币",
+        "心悦组队",
+        "赛利亚",
+        "上周心悦",
+        "自动组队",
+        "心悦G分",
+        "编年史",
+        "年史碎片",
+        "搭档",
+        "上月",
+        "自动匹配",
+        "论坛代币券",
+        # "闪光杯爆装",
     ]
     colSizes = [
-        4, 12, 8, 8, 10, 6, 6, 16, 12,
-        8, 8, 8, 14, 8, 14, 6, 8, 10,
+        4,
+        12,
+        8,
+        10,
+        6,
+        6,
+        16,
+        12,
+        8,
+        8,
+        8,
+        14,
+        8,
+        14,
+        4,
+        8,
+        10,
+        # 10,
     ]
 
     logger.info(tableify(heads, colSizes))
     for row in rows:
         logger.info(color("fg_bold_green") + tableify(row, colSizes, need_truncate=True))
 
-    # 展示本周闪光杯爆装
-    DjcHelper(cfg.account_configs[0], cfg.common).dnf_shanguang_show_equipments()
+    # # 展示本周闪光杯爆装
+    # DjcHelper(cfg.account_configs[0], cfg.common).dnf_shanguang_show_equipments()
 
 
 def get_account_status(idx: int, account_config: AccountConfig, common_config: CommonConfig, user_buy_info: BuyInfo):
@@ -664,7 +895,7 @@ def get_account_status(idx: int, account_config: AccountConfig, common_config: C
     djcHelper.get_bind_role_list(print_warning=False)
 
     djc_info = djcHelper.query_balance("查询聚豆概览", print_res=False)["data"]
-    djc_allin, djc_balance = int(djc_info['allin']), int(djc_info['balance'])
+    _, djc_balance = int(djc_info["allin"]), int(djc_info["balance"])
 
     xinyue_info = djcHelper.query_xinyue_info("查询心悦成就点概览", print_res=False)
     teaminfo = djcHelper.query_xinyue_teaminfo()
@@ -689,7 +920,24 @@ def get_account_status(idx: int, account_config: AccountConfig, common_config: C
     partner_levelInfo = ""
     user_task_info = djcHelper.query_dnf_helper_chronicle_user_task_list()
     if user_task_info.hasPartner:
-        partner_levelInfo, _ = djcHelper.query_dnf_helper_chronicle_info(user_task_info.pUserId).get_level_info_and_points_to_show()
+        partner_levelInfo, _ = djcHelper.query_dnf_helper_chronicle_info(
+            user_task_info.pUserId
+        ).get_level_info_and_points_to_show()
+
+    user_info_db = (
+        DnfHelperChronicleUserActivityTopInfoDB().with_context(djcHelper.get_dnf_helper_chronicle_db_key()).load()
+    )
+    last_month_user_task_info = user_info_db.get_last_month_user_info()
+    last_month_level = last_month_user_task_info.level
+
+    can_auto_match_dnf_helper_chronicle = ""
+    if djcHelper.check_dnf_helper_chronicle_auto_match(user_buy_info, print_waring=False):
+        if user_task_info.hasPartner:
+            can_auto_match_dnf_helper_chronicle = "匹配成功"
+        else:
+            can_auto_match_dnf_helper_chronicle = "等待匹配"
+    elif not account_config.dnf_helper_info.enable_auto_match_dnf_chronicle:
+        can_auto_match_dnf_helper_chronicle = "未开启"
 
     # majieluo_stone = djcHelper.query_stone_count()
     # time.sleep(1)  # 避免查询下面的次数时提示 速度过快
@@ -697,19 +945,28 @@ def get_account_status(idx: int, account_config: AccountConfig, common_config: C
 
     dbq = djcHelper.query_dnf_bbs_dbq()
 
-    shanguang_equip_count = djcHelper.query_dnf_shanguang_equip_count(print_warning=False)
+    # shanguang_equip_count = djcHelper.query_dnf_shanguang_equip_count(print_warning=False)
 
     return [
-        idx, account_config.name,
-        djc_balance, djc_allin,
-        xinyue_info.xytype_str, xinyue_info.score, xinyue_info.ysb, team_award_summary, xinyue_info.work_info(),
-
-        last_week_xinyue_take_award_count, can_auto_match_xinyue_team,
+        idx,
+        account_config.name,
+        djc_balance,
+        xinyue_info.xytype_str,
+        xinyue_info.score,
+        xinyue_info.ysb,
+        team_award_summary,
+        xinyue_info.work_info(),
+        last_week_xinyue_take_award_count,
+        can_auto_match_xinyue_team,
         gpoints,
-        levelInfo, chronicle_points, partner_levelInfo,
+        levelInfo,
+        chronicle_points,
+        partner_levelInfo,
+        last_month_level,
+        can_auto_match_dnf_helper_chronicle,
         # majieluo_stone, majieluo_invite_count,
         dbq,
-        shanguang_equip_count,
+        # shanguang_equip_count,
     ]
 
 
@@ -751,15 +1008,26 @@ def run(cfg: Config, user_buy_info: BuyInfo):
 
         if not cfg.common.enable_super_fast_mode:
             logger.info("当前未开启超快速模式~将并行运行各个账号")
-            get_pool().starmap(do_run, [(_idx + 1, account_config, cfg.common, user_buy_info)
-                                        for _idx, account_config in enumerate(cfg.account_configs) if account_config.is_enabled()])
+            get_pool().starmap(
+                do_run,
+                [
+                    (_idx + 1, account_config, cfg.common, user_buy_info)
+                    for _idx, account_config in enumerate(cfg.account_configs)
+                    if account_config.is_enabled()
+                ],
+            )
         else:
             logger.info(color("bold_cyan") + f"已启用超快速模式，将使用{cfg.get_pool_size()}个进程并发运行各个账号的各个活动，日志将完全不可阅读~")
             activity_funcs_to_run = get_activity_funcs_to_run(cfg, user_buy_info)
-            get_pool().starmap(run_act, [(account_config, cfg.common, act_name, act_func.__name__)
-                                         for account_config in cfg.account_configs if account_config.is_enabled()
-                                         for act_name, act_func in activity_funcs_to_run
-                                         ])
+            get_pool().starmap(
+                run_act,
+                [
+                    (account_config, cfg.common, user_buy_info, act_name, act_func.__name__)
+                    for account_config in cfg.account_configs
+                    if account_config.is_enabled()
+                    for act_name, act_func in activity_funcs_to_run
+                ],
+            )
     else:
         for idx, account_config in enumerate(cfg.account_configs):
             idx += 1
@@ -802,6 +1070,13 @@ def try_report_usage_info(cfg: Config):
         increase_counter(ga_category="login_mode", name=account_config.login_mode)
 
         increase_counter(ga_category="enable_xinyue_team_auto_match", name=account_config.enable_auto_match_xinyue_team)
+        increase_counter(
+            ga_category="enable_auto_match_dnf_chronicle",
+            name=account_config.dnf_helper_info.enable_auto_match_dnf_chronicle,
+        )
+        increase_counter(
+            ga_category="enable_fixed_dnf_chronicle_partner", name=account_config.dnf_helper_info.pUserId != ""
+        )
 
     # 上报网盘地址，用于区分分发渠道
     if not run_from_src():
@@ -843,7 +1118,7 @@ def do_run(idx: int, account_config: AccountConfig, common_config: CommonConfig,
 
     start_time = datetime.datetime.now()
 
-    djcHelper = DjcHelper(account_config, common_config)
+    djcHelper = DjcHelper(account_config, common_config, user_buy_info)
     djcHelper.run(user_buy_info)
 
     used_time = datetime.datetime.now() - start_time
@@ -864,7 +1139,9 @@ def try_take_xinyue_team_award(cfg: Config, user_buy_info: BuyInfo):
             continue
 
         logger.info("")
-        logger.warning(color("fg_bold_green") + f"------------开始尝试为第{idx}个账户({account_config.name})领取心悦组队奖励------------")
+        logger.warning(
+            color("fg_bold_green") + f"------------开始尝试为第{idx}个账户({account_config.name})领取心悦组队奖励------------"
+        )
 
         if not account_config.function_switches.get_xinyue:
             logger.warning("未启用领取心悦特权专区功能，将跳过")
@@ -878,7 +1155,7 @@ def try_take_xinyue_team_award(cfg: Config, user_buy_info: BuyInfo):
         group_info = djcHelper.get_xinyue_team_group_info(user_buy_info)
         teaminfo = djcHelper.query_xinyue_teaminfo()
         if not group_info.is_local and not teaminfo.is_team_full():
-            logger.warning(color("fg_yellow") + f"当前启用了云端自动组队功能，但仍未组到队。因为组队前获取的奖励不会计入默契福利，暂时不尝试领取心悦奖励")
+            logger.warning(color("fg_yellow") + "当前启用了云端自动组队功能，但仍未组到队。因为组队前获取的奖励不会计入默契福利，暂时不尝试领取心悦奖励")
             continue
 
         djcHelper.xinyue_battle_ground_op("领取默契奖励点", "749229")
@@ -896,12 +1173,17 @@ def try_xinyue_sailiyam_start_work(cfg):
             continue
 
         logger.info("")
-        logger.warning(color("fg_bold_green") + f"------------开始处理第{idx}个账户({account_config.name})的赛利亚的打工和领工资~------------")
+        logger.warning(
+            color("fg_bold_green") + f"------------开始处理第{idx}个账户({account_config.name})的赛利亚的打工和领工资~------------"
+        )
 
         djcHelper = DjcHelper(account_config, cfg.common)
         djcHelper.check_skey_expired()
         djcHelper.get_bind_role_list()
-        if account_config.function_switches.get_xinyue_sailiyam or account_config.function_switches.disable_most_activities:
+        if (
+            account_config.function_switches.get_xinyue_sailiyam
+            or account_config.function_switches.disable_most_activities
+        ):
             # 先尝试领工资
             djcHelper.show_xinyue_sailiyam_work_log()
             djcHelper.xinyue_sailiyam_op("领取工资", "714229", iPackageId=djcHelper.get_xinyue_sailiyam_package_id())
@@ -927,13 +1209,19 @@ def show_buy_info(user_buy_info: BuyInfo, cfg: Config, need_show_message_box=Tru
             monthly_pay_info = f"按月付费剩余时长为 {rt.days}天{rt.seconds // 3600}小时"
         else:
             monthly_pay_info = "按月付费已过期"
-    change_title(monthly_pay_info=monthly_pay_info, multiprocessing_pool_size=cfg.get_pool_size(), enable_super_fast_mode=cfg.common.enable_super_fast_mode)
+    change_title(
+        monthly_pay_info=monthly_pay_info,
+        multiprocessing_pool_size=cfg.get_pool_size(),
+        enable_super_fast_mode=cfg.common.enable_super_fast_mode,
+    )
 
     if need_show_message_box:
         # 仅在运行结束时的那次展示付费信息的时候尝试进行下列弹窗~
         expired = not user_buy_info.is_active()
         will_expired_soon = user_buy_info.will_expire_in_days(cfg.common.notify_pay_expired_in_days)
-        if (expired and is_weekly_first_run("show_buy_info_expired")) or (will_expired_soon and is_daily_first_run("show_buy_info_will_expired_soon")):
+        if (expired and is_weekly_first_run("show_buy_info_expired")) or (
+            will_expired_soon and is_daily_first_run("show_buy_info_will_expired_soon")
+        ):
             ctx = ""
             if expired:
                 ctx = monthly_pay_info
@@ -950,7 +1238,12 @@ def show_buy_info(user_buy_info: BuyInfo, cfg: Config, need_show_message_box=Tru
                 has_use_card_secret = True
                 break
 
-        if is_first_run("卡密付费方案提示v2") or (not use_by_myself() and user_buy_info.total_buy_month > 0 and not has_use_card_secret and is_weekly_first_run("每周提示一次已付费用户续费可使用卡密自助操作")):
+        if is_first_run("卡密付费方案提示v2") or (
+            not use_by_myself()
+            and user_buy_info.total_buy_month > 0
+            and not has_use_card_secret
+            and is_weekly_first_run("每周提示一次已付费用户续费可使用卡密自助操作")
+        ):
             msg = "现已添加新的的付费方案，可在一分钟内自助完成付费和激活对应功能（自动更新或按月付费）。\n如果想要付费或者续费可以选择这个方案~ 详情请看 【付费指引/付费指引.docx】"
             title = "新增付费方案"
             async_message_box(msg, title, icon=MB_ICONINFORMATION, follow_flag_file=False)
@@ -984,7 +1277,7 @@ def show_buy_info_sync(ctx: str, cfg: Config, force_message_box=False):
     logger.warning(color("fg_bold_cyan") + message)
     if is_windows():
         if not use_by_myself() or force_message_box:
-            win32api.MessageBox(0, message, f"付费提示(〃'▽'〃)", win32con.MB_OK)
+            win32api.MessageBox(0, message, "付费提示(〃'▽'〃)", win32con.MB_OK)
         # os.popen("付费指引/支持一下.png")
         os.popen("付费指引/付费指引.docx")
 
@@ -999,30 +1292,33 @@ def check_update(cfg):
         # 如果存在自动更新DLC，则走自动更新的流程，不再手动检查是否有更新内容
         return
 
-    logger.warning(color("bold_cyan") + (
-        "未发现自动更新DLC（预期应放在utils/auto_updater.exe路径，但是木有发现嗷），因此自动更新功能没有激活，需要根据检查更新结果手动进行更新操作~\n"
-        "如果已经购买过DLC，请先打开目录中的[付费指引/付费指引.docx]，找到自动更新DLC的使用说明，按照教程操作一番即可\n"
-        "-----------------\n"
-        "以下为广告时间0-0\n"
-        "花了两天多时间，给小助手加入了目前(指2021.1.6)唯一一个付费DLC功能：自动更新（支持增量更新和全量更新）\n"
-        "当没有该DLC时，所有功能将正常运行，只是需要跟以往一样，检测到更新时需要自己去手动更新\n"
-        "当添加该DLC后，将额外增加自动更新功能，启动时将会判断是否需要更新，若需要则直接干掉小助手，然后更新到最新版后自动启动新版本\n"
-        "演示视频: https://www.bilibili.com/video/BV1FA411W7Nq\n"
-        "由于这个功能并不影响实际领蚊子腿的功能，且花费了我不少时间来倒腾这东西，所以目前决定该功能需要付费获取，暂定价为10.24元。\n"
-        "想要摆脱每次有新蚊子腿更新或bugfix时，都要手动下载并转移配置文件这种无聊操作的小伙伴如果觉得这个价格值的话，可以按下面的方式购买0-0\n"
-        "价格：10.24元\n"
-        "购买方式和使用方式可查看目录中的【付费指引/付费指引.docx】\n"
-        "PS：不购买这个DLC也能正常使用蚊子腿小助手哒（跟之前版本体验一致）~只是购买后可以免去手动升级的烦恼哈哈，顺带能鼓励我花更多时间来维护小助手，支持新的蚊子腿以及优化使用体验(oﾟ▽ﾟ)o  \n"
-    ))
+    logger.warning(
+        color("bold_cyan")
+        + (
+            "未发现自动更新DLC（预期应放在utils/auto_updater.exe路径，但是木有发现嗷），因此自动更新功能没有激活，需要根据检查更新结果手动进行更新操作~\n"
+            "如果已经购买过DLC，请先打开目录中的[付费指引/付费指引.docx]，找到自动更新DLC的使用说明，按照教程操作一番即可\n"
+            "-----------------\n"
+            "以下为广告时间0-0\n"
+            "花了两天多时间，给小助手加入了目前(指2021.1.6)唯一一个付费DLC功能：自动更新（支持增量更新和全量更新）\n"
+            "当没有该DLC时，所有功能将正常运行，只是需要跟以往一样，检测到更新时需要自己去手动更新\n"
+            "当添加该DLC后，将额外增加自动更新功能，启动时将会判断是否需要更新，若需要则直接干掉小助手，然后更新到最新版后自动启动新版本\n"
+            "演示视频: https://www.bilibili.com/video/BV1FA411W7Nq\n"
+            "由于这个功能并不影响实际领蚊子腿的功能，且花费了我不少时间来倒腾这东西，所以目前决定该功能需要付费获取，暂定价为10.24元。\n"
+            "想要摆脱每次有新蚊子腿更新或bugfix时，都要手动下载并转移配置文件这种无聊操作的小伙伴如果觉得这个价格值的话，可以按下面的方式购买0-0\n"
+            "价格：10.24元\n"
+            "购买方式和使用方式可查看目录中的【付费指引/付费指引.docx】\n"
+            "PS：不购买这个DLC也能正常使用蚊子腿小助手哒（跟之前版本体验一致）~只是购买后可以免去手动升级的烦恼哈哈，顺带能鼓励我花更多时间来维护小助手，支持新的蚊子腿以及优化使用体验(oﾟ▽ﾟ)o  \n"
+        )
+    )
 
-    logger.info((
+    logger.info(
         "\n"
         "++++++++++++++++++++++++++++++++++++++++\n"
         "现在准备访问github仓库相关页面来检查是否有新版本\n"
         "由于国内网络问题，访问可能会比较慢，请不要立即关闭，可以选择最小化或切换到其他窗口0-0\n"
         "若有新版本会自动弹窗提示~\n"
         "++++++++++++++++++++++++++++++++++++++++\n"
-    ))
+    )
     check_update_on_start(cfg.common)
 
 
@@ -1060,7 +1356,12 @@ def show_ask_message_box_sync(cfg: Config):
     if exists_flag_file(".never_show_ask_message_box"):
         return
 
-    if now_before("2022-01-15 23:59:59") and cfg.common.enable_alipay_redpacket_v2 and is_daily_first_run("支付宝红包活动") and not use_by_myself():
+    if (
+        now_before("2022-03-31 23:59:59")
+        and cfg.common.enable_alipay_redpacket_v2
+        and is_daily_first_run("支付宝红包活动")
+        and not use_by_myself()
+    ):
         title = "支付宝红包活动（v2）"
         message = (
             "现在支付宝有个红包活动，扫弹出来的这个二维码就可以领取一个红包，在便利店等实体店扫码就可以使用，购买小助手的时候似乎也可以使用。\n"
@@ -1071,46 +1372,55 @@ def show_ask_message_box_sync(cfg: Config):
             "\n"
             "支付宝这个红包活动延期了-。-所以我把开关调整了下，之前关闭过的，如果真的不想看到，可以再去点一点<_<\n"
         )
-        message_box(message, title, open_image="付费指引/支付宝红包活动.jpg")
+        image_path = random.choice(["付费指引/支付宝红包活动.jpg", "付费指引/支付宝红包活动_实体版.jpg"])
+        message_box(message, title, open_image=image_path)
 
 
 @try_except()
-def show_tips(cfg):
+def show_tips(cfg: Config):
     if not has_any_account_in_normal_run(cfg):
         return
     _show_head_line("一些小提示")
 
     tips = {
-        "工具下载": (
-            "如需下载chrome、autojs、HttpCanary、vscode、bandizip等小工具，可前往网盘自助下载：https://fzls.lanzouo.com/s/djc-tools"
-        ),
-        "视频教程": (
-            "部分活动的配置可能比较麻烦，因此新录制了几个视频教程，有兴趣的朋友可以自行观看：https://www.bilibili.com/video/BV1LQ4y1y7QJ?p=1"
-        ),
-        "部分新出的活动": (
-            "以下活动请自行完成~\n"
-            "\n"
-            "充值夺宝第三期：https://pay.qq.com/h5/activity/vision_new_creator.php?key=dnf_sd50ds3_lottery&pf=__mds_dnf_share\n"
-            "微信DNF公众号签到：在 地下城与勇士 公众号 输入 金秋签到 即可，20天可以领一个自选灿烂\n"
-        ),
+        "工具下载": ("如需下载chrome、autojs、HttpCanary、vscode、bandizip等小工具，可前往网盘自助下载：https://fzls.lanzouo.com/s/djc-tools"),
+        "视频教程": ("部分活动的配置可能比较麻烦，因此新录制了几个视频教程，有兴趣的朋友可以自行观看：https://www.bilibili.com/video/BV1LQ4y1y7QJ?p=1"),
         "助手编年史": (
             "dnf助手签到任务和浏览咨询详情页请使用auto.js等自动化工具来模拟打开助手去执行对应操作，当然也可以每天手动打开助手点一点-。-\n"
             "也就是说，小助手不会帮你*完成*上述任务的条件，只会在你完成条件的前提下，替你去领取任务奖励\n"
             "此外，如果想要自动领取等级奖励，请把配置工具中助手相关的所有配置项都填上\n"
         ),
-        "编年史自动绑定": (
-            "编年史现已支持自动绑定搭档。如果你有固定的搭档，可以打开配置工具，在dnf助手相关配置中填上搭档的userID，之后每期编年史都会自动尝试绑定对方~"
+        "22魔界人跳一跳": (
+            "一个类似微信跳一跳的小游戏，每天最多尝试6次，全部通过可以获得一年的黑钻，需要手动完成\n" "https://dnf.qq.com/mingame/jump/index.html?pt=1\n"
+        ),
+        "绑定手机领666代币券": ("之前春节短暂上线又鸽掉的绑手机领666欢乐代币券活动又回来了，大家可以去点一点: https://dnf.qq.com/cp/a20211230info/index.html"),
+        "colg新的签到活动": (
+            "colg新增了个签到小游戏，每天玩一次后可以签到，15天可以领一个自选灿烂，有兴趣的朋友请自行操作: https://bbs.colg.cn/colg_activity_new-ac.html/lifeRestart"
+        ),
+        "2022.3 微信公众号": ("微信公众号【地下城与勇士】有一个每日答题抽奖活动，在公众号依次输入 dta dtb dtc ，直到提示答对为止，然后点击【戳这里】即可抽奖"),
+        "2022.4 虎牙斗鱼活动": (
+            "虎牙斗鱼的活动请自行参与\n"
+            "虎牙：https://www.huya.com/g/2#cate-1-5027\n"
+            "斗鱼: https://www.douyu.com/topic/DNFCRZBJ?rid=5324055\n"
         ),
     }
 
     logger.info(color("bold_green") + "如果看上去卡在这了，请看看任务是否有弹窗的图标，把他们一个个按掉就能继续了（活动此时已经运行完毕）")
 
     for title, tip in tips.items():
+        # 为保证格式一致，移除末尾的\n
+        tip = str(tip)
+        if tip.endswith("\n"):
+            tip = tip[:-1]
+
         msg = f"{title}: {tip}\n "
         async_message_box(msg, f"一些小提示_{title}", show_once=True, follow_flag_file=False)
 
     # 尝试给自己展示一些提示
     show_tips_for_myself()
+
+    if cfg.common.disable_cmd_quick_edit:
+        show_quick_edit_mode_tip()
 
 
 def show_tips_for_myself():
@@ -1118,7 +1428,14 @@ def show_tips_for_myself():
         return
 
     # if is_weekly_first_run("微信支付维护提示"):
-    #     async_message_box("看看微信支付的渠道维护结束了没。如果结束了，就把配置工具中微信支付按钮的点击特殊处理干掉", "支付维护")
+    #     show_tip_for_myself("看看微信支付的渠道维护结束了没。如果结束了，就把配置工具中微信支付按钮的点击特殊处理干掉", "支付维护")
+
+    # if is_weekly_first_run("交易乐维护提示"):
+    #     show_tip_for_myself("看看交易乐是否已经修复，如果已经正常运行，则将配置工具中默认启用卡密的处理移除（搜：默认启用卡密）", "交易乐维护提示")
+
+
+def show_tip_for_myself(msg: str, title: str):
+    async_message_box(msg, f"给自己看的提示 - {title}")
 
 
 def try_auto_update(cfg):
@@ -1193,13 +1510,17 @@ def try_auto_update(cfg):
         else:
             if not exists_auto_updater_dlc():
                 if not query_ok:
-                    logger.debug(f"当前应该是查询dlc失败后全部放行的情况，这种情况下若本地没有dlc，则不尝试自动下载，避免后续查询功能恢复正常后提示没有权限，需要手动删除")
+                    logger.debug("当前应该是查询dlc失败后全部放行的情况，这种情况下若本地没有dlc，则不尝试自动下载，避免后续查询功能恢复正常后提示没有权限，需要手动删除")
                     return
 
                 # 未发现dlc和最新版dlc，尝试从网盘下载
                 logger.info(color("bold_yellow") + f"未发现自动更新DLC({auto_updater_path()})，将尝试从网盘下载")
                 uploader = Uploader()
-                uploader.download_file_in_folder(uploader.folder_djc_helper, os.path.basename(auto_updater_path()), os.path.dirname(auto_updater_path()))
+                uploader.download_file_in_folder(
+                    uploader.folder_djc_helper,
+                    os.path.basename(auto_updater_path()),
+                    os.path.dirname(auto_updater_path()),
+                )
 
         # 保底，如果前面的流程都失败了，提示用户自行下载
         if not exists_auto_updater_dlc():
@@ -1214,13 +1535,25 @@ def try_auto_update(cfg):
         logger.info(color("bold_yellow") + "尝试启动更新器，等待其执行完毕。若版本有更新，则会干掉这个进程并下载更新文件，之后重新启动进程...(请稍作等待）")
         for idx in range_from_one(3):
             dlc_path = auto_updater_path()
-            p = subprocess.Popen([
-                dlc_path,
-                "--pid", str(pid),
-                "--version", str(now_version),
-                "--cwd", dirpath,
-                "--exe_name", filename,
-            ], cwd="utils", shell=True, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            p = subprocess.Popen(
+                [
+                    dlc_path,
+                    "--pid",
+                    str(pid),
+                    "--version",
+                    str(now_version),
+                    "--cwd",
+                    dirpath,
+                    "--exe_name",
+                    filename,
+                ],
+                cwd="utils",
+                shell=True,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
             p.wait()
 
             if p.returncode == 0:
@@ -1241,7 +1574,9 @@ def try_auto_update(cfg):
                 break
 
             # 更新新版本，然后重试
-            logger.info(color("bold_green") + f"网盘中最新版本dlc上传于{latest_version_time}左右，在当前版本之后，有可能已经修复dlc的该问题，将尝试更新dlc为最新版本")
+            logger.info(
+                color("bold_green") + f"网盘中最新版本dlc上传于{latest_version_time}左右，在当前版本之后，有可能已经修复dlc的该问题，将尝试更新dlc为最新版本"
+            )
             uploader.download_file(netdisk_latest_dlc_info, os.path.dirname(dlc_path))
 
         logger.info(color("bold_yellow") + "当前版本为最新版本，不需要更新~")
@@ -1254,7 +1589,9 @@ def has_buy_auto_updater_dlc(qq_accounts: List[str], max_retry_count=3, retry_wa
     return has_buy
 
 
-def has_buy_auto_updater_dlc_and_query_ok(qq_accounts: List[str], max_retry_count=3, retry_wait_time=5, show_log=False) -> Tuple[bool, bool]:
+def has_buy_auto_updater_dlc_and_query_ok(
+    qq_accounts: List[str], max_retry_count=3, retry_wait_time=5, show_log=False
+) -> Tuple[bool, bool]:
     """
     查询是否购买过dlc，返回 [是否有资格，查询是否成功]
     """
@@ -1268,15 +1605,24 @@ def has_buy_auto_updater_dlc_and_query_ok(qq_accounts: List[str], max_retry_coun
         try:
             uploader = Uploader()
             has_no_users = True
-            for remote_filename in [uploader.buy_auto_updater_users_filename, uploader.cs_buy_auto_updater_users_filename]:
+            for remote_filename in [
+                uploader.buy_auto_updater_users_filename,
+                uploader.cs_buy_auto_updater_users_filename,
+            ]:
                 try:
-                    user_list_filepath = uploader.download_file_in_folder(uploader.folder_online_files, remote_filename, downloads_dir, show_log=show_log, try_compressed_version_first=True)
+                    user_list_filepath = uploader.download_file_in_folder(
+                        uploader.folder_online_files,
+                        remote_filename,
+                        downloads_dir,
+                        show_log=show_log,
+                        try_compressed_version_first=True,
+                    )
                 except FileNotFoundError:
                     # 如果网盘没有这个文件，就跳过
                     continue
 
                 buy_users = []
-                with open(user_list_filepath, 'r', encoding='utf-8') as data_file:
+                with open(str(user_list_filepath), encoding="utf-8") as data_file:
                     buy_users = json.load(data_file)
 
                 if len(buy_users) != 0:
@@ -1286,12 +1632,9 @@ def has_buy_auto_updater_dlc_and_query_ok(qq_accounts: List[str], max_retry_coun
                     if qq in buy_users:
                         return True, True
 
-                logger.debug((
-                    "DLC购买调试日志：\n"
-                    f"remote_filename={remote_filename}\n"
-                    f"账号列表={qq_accounts}\n"
-                    f"用户列表={buy_users}\n"
-                ))
+                logger.debug(
+                    "DLC购买调试日志：\n" f"remote_filename={remote_filename}\n" f"账号列表={qq_accounts}\n" f"用户列表={buy_users}\n"
+                )
 
             if has_no_users:
                 # note: 如果读取失败或云盘该文件列表为空，则默认所有人都放行
@@ -1308,7 +1651,9 @@ def has_buy_auto_updater_dlc_and_query_ok(qq_accounts: List[str], max_retry_coun
     return True, True
 
 
-def get_user_buy_info(qq_accounts: List[str], max_retry_count=3, retry_wait_time=5, show_log=False, show_dlc_info=True) -> BuyInfo:
+def get_user_buy_info(
+    qq_accounts: List[str], max_retry_count=3, retry_wait_time=5, show_log=False, show_dlc_info=True
+) -> BuyInfo:
     logger.info(f"如果卡在这里不能动，请先看看网盘里是否有新版本~ 如果新版本仍无法解决，可加群反馈~ 链接：{config().common.netdisk_link}")
 
     logger.debug("尝试由服务器代理查询付费信息，请稍候片刻~")
@@ -1332,6 +1677,7 @@ def get_user_buy_info_from_server(qq_accounts: List[str]) -> Tuple[BuyInfo, bool
 
     try:
         if len(qq_accounts) != 0:
+
             def fetch_query_info_from_server() -> str:
                 server_addr = get_pay_server_addr()
                 raw_res = requests.post(f"{server_addr}/query_buy_info", json=qq_accounts, timeout=20)
@@ -1341,8 +1687,13 @@ def get_user_buy_info_from_server(qq_accounts: List[str]) -> Tuple[BuyInfo, bool
                 else:
                     return ""
 
-            raw_res_text = with_cache(cache_name_user_buy_info, json.dumps(qq_accounts), cache_max_seconds=600, cache_miss_func=fetch_query_info_from_server,
-                                      cache_validate_func=None)
+            raw_res_text = with_cache(
+                cache_name_user_buy_info,
+                json.dumps(qq_accounts),
+                cache_max_seconds=600,
+                cache_miss_func=fetch_query_info_from_server,
+                cache_validate_func=None,
+            )
             if raw_res_text != "":
                 ok = True
                 buyInfo.auto_update_config(json.loads(raw_res_text))
@@ -1353,7 +1704,9 @@ def get_user_buy_info_from_server(qq_accounts: List[str]) -> Tuple[BuyInfo, bool
     return buyInfo, ok
 
 
-def get_user_buy_info_from_netdisk(qq_accounts: List[str], max_retry_count=3, retry_wait_time=5, show_log=False) -> Tuple[BuyInfo, bool]:
+def get_user_buy_info_from_netdisk(
+    qq_accounts: List[str], max_retry_count=3, retry_wait_time=5, show_log=False
+) -> Tuple[BuyInfo, bool]:
     default_user_buy_info = BuyInfo()
     for try_idx in range(max_retry_count):
         try:
@@ -1372,12 +1725,18 @@ def get_user_buy_info_from_netdisk(qq_accounts: List[str], max_retry_count=3, re
                 user_buy_info = user_buy_info_list[idx]
 
                 try:
-                    buy_info_filepath = uploader.download_file_in_folder(uploader.folder_online_files, remote_filename, downloads_dir, show_log=show_log, try_compressed_version_first=True)
+                    buy_info_filepath = uploader.download_file_in_folder(
+                        uploader.folder_online_files,
+                        remote_filename,
+                        downloads_dir,
+                        show_log=show_log,
+                        try_compressed_version_first=True,
+                    )
                 except FileNotFoundError:
                     # 如果网盘没有这个文件，就跳过
                     continue
 
-                buy_users = {}  # type: Dict[str, BuyInfo]
+                buy_users: Dict[str, BuyInfo] = {}
 
                 def update_if_longer(qq: str, info: BuyInfo):
                     if qq not in buy_users:
@@ -1388,7 +1747,7 @@ def get_user_buy_info_from_netdisk(qq_accounts: List[str], max_retry_count=3, re
                         if time_less(old_info.expire_at, info.expire_at):
                             buy_users[qq] = info
 
-                with open(buy_info_filepath, 'r', encoding='utf-8') as data_file:
+                with open(str(buy_info_filepath), encoding="utf-8") as data_file:
                     raw_infos = json.load(data_file)
                     for qq, raw_info in raw_infos.items():
                         info = BuyInfo().auto_update_config(raw_info)
@@ -1442,6 +1801,7 @@ def get_user_buy_info_from_netdisk(qq_accounts: List[str], max_retry_count=3, re
 
 def try_add_extra_times(user_buy_info: BuyInfo, has_buy_dlc: bool, show_dlc_info: bool):
     if has_buy_dlc:
+        # hack: 这里不特别去除2021.4.11之前未购买按月付费的情况，是为了与服务器保持一致。目前从服务器解析回来时，判定是否购买dlc，是通过dlc的那个额外条目来判定的，移除后将无法判定。当然也可以选择添加新字段，但这里为了省事和兼容之前版本，就不修改了
         add_extra_times_for_dlc(user_buy_info, show_dlc_info)
 
     # 根据需要可以在这里添加额外的赠送时长逻辑
@@ -1484,23 +1844,36 @@ def add_extra_times_for_dlc(user_buy_info: BuyInfo, show_dlc_info: bool):
 
     old_expire_at = user_buy_info.expire_at
     user_buy_info.expire_at = format_time(expire_at_time)
-    user_buy_info.buy_records.insert(0, BuyRecord().auto_update_config({
-        "buy_month": 2,
-        "buy_at": format_time(free_start_time),
-        "reason": "自动更新DLC赠送(自2.8至今最多累积未付费时长两个月***注意不是从购买日开始计算***)"
-    }))
+    user_buy_info.buy_records.insert(
+        0,
+        BuyRecord().auto_update_config(
+            {
+                "buy_month": 2,
+                "buy_at": format_time(free_start_time),
+                "reason": "自动更新DLC赠送(自2.8至今最多累积未付费时长两个月***注意不是从购买日开始计算***)",
+            }
+        ),
+    )
 
     if show_dlc_info:
         logger.info(color("bold_yellow") + "注意：自动更新和按月付费是两个完全不同的东西，具体区别请看 付费指引/付费指引.docx")
-        logger.info(color("bold_cyan") + f"当前运行的qq中已有某个qq购买过自动更新dlc\n" +
-                    color("bold_green") + f"\t自{free_start_time}开始将累积可免费使用付费功能两个月，累计未付费时长为{not_paied_times}，将补偿{fixup_times}\n"
-                                          f"\t实际过期时间为{user_buy_info.expire_at}(原结束时间为{old_expire_at})")
-        logger.info(color("bold_black") + "若对自动更新送的两月有疑义，请看付费指引的常见问题章节\n"
-                                          "\t请注意这里的两月是指从2.8开始累积未付费时长最多允许为两个月，是给2.8以前购买DLC的朋友的小福利\n"
-                                          "\t如果4.11以后才购买就享受不到这个的，因为购买时自2.8开始的累积未付费时长已经超过两个月")
+        logger.info(
+            color("bold_cyan")
+            + "当前运行的qq中已有某个qq购买过自动更新dlc\n"
+            + color("bold_green")
+            + f"\t自{free_start_time}开始将累积可免费使用付费功能两个月，累计未付费时长为{not_paied_times}，将补偿{fixup_times}\n"
+            + f"\t实际过期时间为{user_buy_info.expire_at}(原结束时间为{old_expire_at})"
+        )
+        logger.info(
+            color("bold_black") + "若对自动更新送的两月有疑义，请看付费指引的常见问题章节\n"
+            "\t请注意这里的两月是指从2.8开始累积未付费时长最多允许为两个月，是给2.8以前购买DLC的朋友的小福利\n"
+            "\t如果4.11以后才购买就享受不到这个的，因为购买时自2.8开始的累积未付费时长已经超过两个月"
+        )
 
 
-def try_notify_new_pay_info(qq_accounts: List[str], latest_user_buy_info: BuyInfo, show_message_box=True) -> Tuple[bool, List[BuyRecord]]:
+def try_notify_new_pay_info(
+    qq_accounts: List[str], latest_user_buy_info: BuyInfo, show_message_box=True
+) -> Tuple[bool, List[BuyRecord]]:
     new_buy_dlc = False
     new_buy_monthly_pay_records: List[BuyRecord] = []
 
@@ -1512,7 +1885,8 @@ def try_notify_new_pay_info(qq_accounts: List[str], latest_user_buy_info: BuyInf
         # 检查dlc
         if not db.buy_info.infer_has_buy_dlc() and latest_user_buy_info.infer_has_buy_dlc():
             new_buy_dlc = True
-            if show_message_box: async_message_box("新购买的自动更新dlc已到账，请按 付费指引 中的使用说明进行使用~", "到账提醒")
+            if show_message_box:
+                async_message_box("新购买的自动更新dlc已到账，请按 付费指引 中的使用说明进行使用~", "到账提醒")
             pass
 
         # 检查是否有新的按月付费
@@ -1523,11 +1897,14 @@ def try_notify_new_pay_info(qq_accounts: List[str], latest_user_buy_info: BuyInf
             latest_buy_records = latest_user_buy_info.get_normal_buy_records()
 
             new_months = latest_user_buy_info.total_buy_month - db.buy_info.total_buy_month
-            new_buy_monthly_pay_records = latest_buy_records[len(old_buy_records):]
+            new_buy_monthly_pay_records = latest_buy_records[len(old_buy_records) :]
             msg = f"新购买的 {new_months} 月 按月付费已到账，详情如下"
-            msg += "\n购买详情如下：\n" + '\n'.join('\t' + f'{record.buy_at} {record.reason} {record.buy_month} 月' for record in new_buy_monthly_pay_records)
+            msg += "\n购买详情如下：\n" + "\n".join(
+                "\t" + f"{record.buy_at} {record.reason} {record.buy_month} 月" for record in new_buy_monthly_pay_records
+            )
 
-            if show_message_box: async_message_box(msg, "到账提醒")
+            if show_message_box:
+                async_message_box(msg, "到账提醒")
 
     # 保存新的付费信息
     if new_buy_dlc or len(new_buy_monthly_pay_records) != 0 or not db.file_created:
@@ -1543,13 +1920,15 @@ def show_multiprocessing_info(cfg: Config):
     if cfg.common.enable_multiprocessing:
         msg += f"当前已开启多进程模式，进程池大小为 {cfg.get_pool_size()}"
         if cfg.common.enable_super_fast_mode:
-            msg += ", 超快速模式已开启，将并行运行各个账号的各个活动~"
+            msg += "\n\n超快速模式已开启，将并行运行各个账号的各个活动~"
         else:
-            msg += ", 超快速模式未开启，将并行运行各个账号。如需同时运行各个活动，可开启该模式~"
-    else:
-        msg += f"未开启多进程模式，如需开启，可前往配置工具开启"
+            msg += "\n\n超快速模式未开启，将并行运行各个账号。如需同时运行各个活动，可开启该模式~"
 
-    logger.info(color("bold_yellow") + msg)
+        msg += "\n\n如果每次启动时明显卡顿或者会导致电脑死机，请在【配置工具/公共配置/多进程】中调整进程池大小，或者关闭多进程相关模式（仅影响运行速度，不影响运行结果）"
+    else:
+        msg += "未开启多进程模式，如需开启，可前往配置工具开启"
+
+    async_message_box(msg, "多进程配置提示", show_once=True, color_name="bold_yellow")
 
     # 上报多进程相关功能的使用情况
     increase_counter(ga_category="enable_multiprocessing", name=cfg.common.enable_multiprocessing)
@@ -1591,12 +1970,17 @@ def try_save_configs_to_user_data_dir():
 
     # 为了方便排查问题，在备份目录写入备份信息
     make_sure_dir_exists(appdata_dir)
-    with open(os.path.join(appdata_dir, '__backup_info.json'), 'w', encoding='utf-8') as f:
-        json.dump({
-            "app_version": now_version,
-            "app_time": ver_time,
-            "backup_time": format_now(),
-        }, f, indent=4, ensure_ascii=False)
+    with open(os.path.join(appdata_dir, "__backup_info.json"), "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "app_version": now_version,
+                "app_time": ver_time,
+                "backup_time": format_now(),
+            },
+            f,
+            indent=4,
+            ensure_ascii=False,
+        )
 
 
 @try_except()
@@ -1615,15 +1999,15 @@ def try_load_old_version_configs_from_user_data_dir():
         return
 
     if run_from_src():
-        logger.info(f"当前使用源码运行，无需同步配置")
+        logger.info("当前使用源码运行，无需同步配置")
         return
 
     if not os.path.isdir(appdata_dir):
-        logger.info(f"当前没有备份的旧版本配置，无需同步配置")
+        logger.info("当前没有备份的旧版本配置，无需同步配置")
         return
 
     if not is_first_run("sync_config"):
-        logger.info(f"当前不是首次运行，无需同步配置")
+        logger.info("当前不是首次运行，无需同步配置")
         return
 
     # 上面的判定是否是首次运行的功能，偶尔会因为windows下创建目录失败而无法正常判定，增加个基于标记文件的保底措施
@@ -1631,22 +2015,22 @@ def try_load_old_version_configs_from_user_data_dir():
         logger.info(f"当前目录存在 {sync_configs_done_flag_file}，说明已经完成过同步流程，将不再尝试")
         return
     # 标记为已同步
-    open(sync_configs_done_flag_file, 'a').close()
+    open(sync_configs_done_flag_file, "a").close()
 
     logger.info("符合同步条件，将开始同步流程~")
     sync_configs(appdata_dir, cwd)
 
 
 def get_appdata_save_dir() -> str:
-    return os.path.join(get_appdata_dir(), 'djc_helper')
+    return os.path.join(get_appdata_dir(), "djc_helper")
 
 
 def check_proxy(cfg: Config):
     if cfg.common.bypass_proxy:
-        logger.info(f"当前配置为无视系统代理，将直接访问网络。")
+        logger.info("当前配置为无视系统代理，将直接访问网络。")
         bypass_proxy()
     else:
-        logger.info(f"当前未开启无视系统代理配置，如果使用了vpn，将优先通过vpn进行访问。如果在国内，并且经常用到vpn，建议打开该配置")
+        logger.info("当前未开启无视系统代理配置，如果使用了vpn，将优先通过vpn进行访问。如果在国内，并且经常用到vpn，建议打开该配置")
 
 
 def demo_show_notices():
@@ -1761,6 +2145,7 @@ def demo_pay_info():
     # from config import to_raw_type
     # cfg.common.on_config_update(to_raw_type(cfg.common))
 
+    # from util import reset_cache
     # reset_cache(cache_name_user_buy_info)
 
     logger.info("尝试获取DLC信息")
@@ -1778,7 +2163,7 @@ def demo_pay_info():
     logger.info(color("bold_cyan") + monthly_pay_info)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     freeze_support()
 
     # demo_main()

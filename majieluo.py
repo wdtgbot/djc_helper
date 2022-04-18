@@ -1,4 +1,10 @@
-from djc_helper import *
+import sys
+import time
+
+from config import config, load_config
+from djc_helper import DjcHelper
+from log import color, logger
+from util import message_box, show_head_line
 
 
 def cui():
@@ -115,5 +121,5 @@ def cui():
         message_box("已领取完毕，请修改send_to_xiaohao为True，方便明天继续从头用", "提示")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cui()

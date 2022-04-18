@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 # 云函数入口文件（Serverless Cloud Function，SCF）
 # https://cloud.tencent.com/document/product/583/56051
 
@@ -10,7 +9,7 @@ from main import main_wrapper
 app = Flask(__name__)
 
 
-@app.route('/event-invoke', methods=['POST'])
+@app.route("/event-invoke", methods=["POST"])
 def invoke():
     # Get all the HTTP headers from the official documentation of Tencent
     request_id = request.headers.get("X-Scf-Request-Id", "")
@@ -26,7 +25,7 @@ def invoke():
     return f"{event_str} request_id: {request_id} completed"
 
 
-@app.route('/web-invoke/python-flask-http', methods=['POST', 'GET'])
+@app.route("/web-invoke/python-flask-http", methods=["POST", "GET"])
 def web_invoke():
     # Get all the HTTP headers from the official documentation of Tencent
     request_id = request.headers.get("X-Scf-Request-Id", "")
@@ -38,5 +37,5 @@ def web_invoke():
     return "Hello from SCF HTTP function, your input: " + event_str + ", request_id: " + request_id + "\n"
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=9000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=9000)

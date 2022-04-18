@@ -5,8 +5,7 @@ from typing import Dict, List
 from config import config, load_config
 from djc_helper import DjcHelper, is_new_version_ark_lottery
 from log import color, logger
-from main_def import (make_ark_lottery_card_and_award_info,
-                      new_ark_lottery_parse_card_id_from_index)
+from main_def import make_ark_lottery_card_and_award_info, new_ark_lottery_parse_card_id_from_index
 from qzone_activity import QzoneActivity
 from setting import parse_card_group_info_map, zzconfig
 from util import show_head_line
@@ -75,7 +74,7 @@ def sell_card(targetQQ: str, cards_to_send: List[str]) -> str:
     if len(cards_to_send) != 0:
         msg += f"\n无法发送以下卡片：{cards_to_send}，是否已达到赠送上限或者这个卡卖完了？"
     if len(success_send_list) != 0:
-        msg += f"\n请使用手机打开集卡页面确认是否到账~ 若到账请按1元每张的价格主动扫码转账哦~（不定期我会核查的，如果买了不付款的话就加入本工具黑名单~）"
+        msg += "\n请使用手机打开集卡页面确认是否到账~ 若到账请按1元每张的价格主动扫码转账哦~（不定期我会核查的，如果买了不付款的话就加入本工具黑名单~）"
     msg += "\n"
 
     return msg
@@ -150,17 +149,19 @@ def run_local():
     cards_to_send: List[str]
     if is_new_version_ark_lottery():
         # 新版集卡中名称为 1/2/3/4/.../10/11/12
-        cards_to_send = ["8",
-                         CARD_PLACEHOLDER,
-                         CARD_PLACEHOLDER,
-                         CARD_PLACEHOLDER,
-                         ]
+        cards_to_send = [
+            "8",
+            CARD_PLACEHOLDER,
+            CARD_PLACEHOLDER,
+            CARD_PLACEHOLDER,
+        ]
     else:
-        cards_to_send = ["智慧产物能升级",
-                         CARD_PLACEHOLDER,
-                         CARD_PLACEHOLDER,
-                         CARD_PLACEHOLDER,
-                         ]
+        cards_to_send = [
+            "智慧产物能升级",
+            CARD_PLACEHOLDER,
+            CARD_PLACEHOLDER,
+            CARD_PLACEHOLDER,
+        ]
     msg = sell_card(targetQQ, cards_to_send)
     logger.info(msg)
 
@@ -175,7 +176,9 @@ def run_remote(args):
             card_name_list = [new_ark_lottery_parse_card_id_from_index(args.card_index)]
         else:
             card_info_map = parse_card_group_info_map(zzconfig())
-            card_name_list = [card_name for card_name, card_info in card_info_map.items() if card_info.index == args.card_index]
+            card_name_list = [
+                card_name for card_name, card_info in card_info_map.items() if card_info.index == args.card_index
+            ]
 
         msg = sell_card(args.target_qq, card_name_list)
     print(json.dumps(msg))
@@ -183,8 +186,8 @@ def run_remote(args):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run_remote", action='store_true')
-    parser.add_argument("--query", action='store_true')
+    parser.add_argument("--run_remote", action="store_true")
+    parser.add_argument("--query", action="store_true")
     parser.add_argument("--target_qq", default="", type=str, help="qq to send card, eg. 1054073896")
     parser.add_argument("--card_index", default="", type=str, help="card index to send, eg. 2-3")
     args = parser.parse_args()
@@ -192,7 +195,7 @@ def parse_args():
     return args
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     load_config("config.toml", "config.toml.local")
 
     args = parse_args()
